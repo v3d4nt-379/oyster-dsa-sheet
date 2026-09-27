@@ -1,237 +1,131 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/lib/firebase/auth-context"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
-import { DifficultyBadge } from "@/components/dsa/difficulty-badge"
-import { PracticeLink } from "@/components/dsa/practice-link"
-import { BookmarkButton } from "@/components/dsa/bookmark-button"
-import { TopicDrawer } from "@/components/dsa/topic-drawer"
-import { Star } from "lucide-react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Loader2 } from "lucide-react"
 
-export default function DesignShowcasePage() {
-  const [isBookmarked, setIsBookmarked] = React.useState(false)
-  const [isSolved, setIsSolved] = React.useState(false)
+export default function AuthPage() {
+  const { user, loading, signInWithGoogle, error } = useAuth()
+  const router = useRouter()
+  const [isSigningIn, setIsSigningIn] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!loading && user) {
+      router.push("/sheet")
+    }
+  }, [user, loading, router])
+
+  const handleSignIn = async () => {
+    setIsSigningIn(true)
+    try {
+      await signInWithGoogle()
+      // Note: redirection is handled by the useEffect above
+    } catch (e) {
+      setIsSigningIn(false)
+    }
+  }
+
+  // Prevent flashing the auth page if we're still checking session or redirecting
+  if (loading || user) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
 
   return (
-    <div className="space-y-12 pb-12">
-      <div className="space-y-4 border-b pb-8">
-        <h1 className="text-4xl font-bold tracking-tight">Design System Showcase</h1>
+    <div className="mx-auto flex min-h-[80vh] max-w-5xl flex-col items-center justify-center gap-12 lg:flex-row lg:items-center lg:gap-24">
+      {/* LEFT SECTION: Branding & Trust */}
+      <div className="flex flex-1 flex-col justify-center space-y-6 text-center lg:text-left">
+        <div className="flex flex-col items-center gap-4 lg:items-start">
+          {/* Official Club Logo */}
+          <div className="relative flex h-20 w-20 shrink-0 items-center justify-center">
+            <img src="/logo-light.jpg" alt="DSA Sheet Logo" className="h-full w-full object-contain dark:hidden" />
+            <img src="/logo-dark.jpg" alt="DSA Sheet Logo" className="hidden h-full w-full object-contain dark:block" />
+          </div>
+          <h1 className="text-4xl font-extrabold tracking-tight lg:text-5xl">
+            DSA Sheet
+          </h1>
+        </div>
         <p className="text-xl text-muted-foreground">
-          Validating Phase 1 components for DSA Sheet.
+          An organized, distraction-free DSA practice platform created by our coding club.
         </p>
+        <ul className="space-y-3 text-lg font-medium text-foreground">
+          <li className="flex items-center gap-3 justify-center lg:justify-start">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-primary">✓</span>
+            Structured DSA Roadmap
+          </li>
+          <li className="flex items-center gap-3 justify-center lg:justify-start">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-primary">✓</span>
+            Daily Practice Tracking
+          </li>
+          <li className="flex items-center gap-3 justify-center lg:justify-start">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-primary">✓</span>
+            Curated by the Coding Club
+          </li>
+        </ul>
       </div>
 
-      <section className="space-y-6">
-        <h2 className="text-2xl font-semibold tracking-tight border-b pb-2">Brand Colors & Typography</h2>
-        <div className="grid gap-6 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Typography</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="text-4xl font-bold">Display Heading</div>
-              <div className="text-2xl font-semibold">Section Heading</div>
-              <div className="text-base font-medium">Card/Base Heading</div>
-              <div className="text-sm">Regular body text goes here. The typography is modern and technical.</div>
-              <div className="text-sm text-muted-foreground">Muted secondary text for descriptions.</div>
-              <div className="font-mono text-sm bg-muted p-1 rounded inline-block">Monospace code text</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Brand Elements</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex gap-4">
-                <div className="h-12 w-12 rounded bg-[#FFB000]" title="Gold"></div>
-                <div className="h-12 w-12 rounded bg-[#FF6600]" title="Orange"></div>
-                <div className="h-12 w-12 rounded bg-[#E63380]" title="Pink"></div>
+      {/* RIGHT SECTION: Auth Card */}
+      <div className="flex w-full max-w-md flex-col justify-center">
+        <Card className="border-border shadow-lg">
+          <CardHeader className="space-y-2 text-center">
+            <CardTitle className="text-2xl font-bold">Create your account</CardTitle>
+            <CardDescription className="text-base">
+              Build consistency. Master DSA.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center justify-center space-y-4 pb-8">
+            <Button 
+              variant="brand" 
+              size="lg" 
+              className="w-full text-base font-semibold"
+              onClick={handleSignIn}
+              disabled={isSigningIn}
+            >
+              {isSigningIn ? (
+                <>
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  Signing you in...
+                </>
+              ) : (
+                <>
+                  {/* Google SVG Icon */}
+                  <svg className="mr-2 h-5 w-5 bg-white rounded-full p-0.5" viewBox="0 0 24 24">
+                    <path
+                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                      fill="#4285F4"
+                    />
+                    <path
+                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                      fill="#34A853"
+                    />
+                    <path
+                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                      fill="#FBBC05"
+                    />
+                    <path
+                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                      fill="#EA4335"
+                    />
+                    <path d="M1 1h22v22H1z" fill="none" />
+                  </svg>
+                  Continue with Google
+                </>
+              )}
+            </Button>
+            {error && (
+              <div className="text-sm text-destructive font-medium text-center">
+                {error}
               </div>
-              <div className="h-12 rounded bg-gradient-to-r from-brand-gold via-brand-orange to-brand-pink flex items-center justify-center font-bold text-white shadow-sm">
-                Primary Brand Gradient
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </section>
-
-      <section className="space-y-6">
-        <h2 className="text-2xl font-semibold tracking-tight border-b pb-2">Components</h2>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {/* Buttons */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Buttons</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4 flex flex-col items-start">
-              <div className="space-y-2">
-                <div className="text-xs font-semibold text-muted-foreground">PRIMARY (Solid Accent)</div>
-                <Button>Primary Button</Button>
-              </div>
-              <div className="space-y-2">
-                <div className="text-xs font-semibold text-muted-foreground">SECONDARY (Neutral)</div>
-                <Button variant="secondary">Secondary Button</Button>
-              </div>
-              <div className="space-y-2">
-                <div className="text-xs font-semibold text-muted-foreground">TERTIARY (Ghost)</div>
-                <Button variant="tertiary">Tertiary Button</Button>
-              </div>
-              <div className="space-y-2">
-                <div className="text-xs font-semibold text-muted-foreground">ICON (Utility)</div>
-                <Button variant="icon" aria-label="Icon button"><Star /></Button>
-              </div>
-              <div className="space-y-2">
-                <div className="text-xs font-semibold text-muted-foreground">BRAND (Major Moments)</div>
-                <Button variant="brand">Continue with Google</Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Badges & Indicators */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Badges & States</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4 flex flex-col items-start">
-              <div className="flex gap-2">
-                <Badge>Default</Badge>
-                <Badge variant="secondary">Secondary</Badge>
-                <Badge variant="outline">Outline</Badge>
-              </div>
-              <Badge variant="brand">Brand Badge</Badge>
-              
-              <div className="pt-4 border-t w-full space-y-4">
-                <h4 className="text-sm font-medium">Difficulty Badges</h4>
-                <div className="flex gap-2">
-                  <DifficultyBadge difficulty="Easy" />
-                  <DifficultyBadge difficulty="Medium" />
-                  <DifficultyBadge difficulty="Hard" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Practice Links & Actions */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Practice & Actions</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4 flex flex-col items-start">
-              <PracticeLink platform="LeetCode" />
-              <PracticeLink platform="GeeksforGeeks" />
-              <PracticeLink platform="CodeChef" />
-              
-              <div className="pt-4 border-t w-full space-y-4">
-                <h4 className="text-sm font-medium">Interactive States</h4>
-                <div className="flex items-center gap-4">
-                  <label className="flex items-center gap-2 text-sm">
-                    <Checkbox checked={isSolved} onCheckedChange={setIsSolved} />
-                    Solved State
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">Bookmark:</span>
-                    <BookmarkButton isBookmarked={isBookmarked} onToggleBookmark={setIsBookmarked} />
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </section>
-
-      <section className="space-y-6">
-        <h2 className="text-2xl font-semibold tracking-tight border-b pb-2">Main DSA Sheet Foundation</h2>
-        
-        <div className="space-y-4">
-          <TopicDrawer title="ARRAYS" solvedCount={12} totalCount={25} defaultExpanded>
-            <div className="w-full overflow-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted text-left">
-                    <th className="h-12 px-4 align-middle font-medium text-muted-foreground w-12 text-center">Status</th>
-                    <th className="h-12 px-4 align-middle font-medium text-muted-foreground w-16">ID</th>
-                    <th className="h-12 px-4 align-middle font-medium text-muted-foreground">Question</th>
-                    <th className="h-12 px-4 align-middle font-medium text-muted-foreground w-48">Practice</th>
-                    <th className="h-12 px-4 align-middle font-medium text-muted-foreground w-28">Difficulty</th>
-                    <th className="h-12 px-4 align-middle font-medium text-muted-foreground w-24">Solution</th>
-                    <th className="h-12 px-4 align-middle font-medium text-muted-foreground w-12 text-center">Bookmark</th>
-                  </tr>
-                </thead>
-                <tbody className="[&_tr:last-child]:border-0">
-                  <tr className="border-b transition-colors hover:bg-muted/50">
-                    <td className="p-4 align-middle text-center"><Checkbox checked={true} /></td>
-                    <td className="p-4 align-middle text-muted-foreground">01</td>
-                    <td className="p-4 align-middle font-medium">Largest Element in an Array</td>
-                    <td className="p-4 align-middle">
-                      <div className="flex gap-2">
-                        <PracticeLink platform="LeetCode" />
-                      </div>
-                    </td>
-                    <td className="p-4 align-middle"><DifficultyBadge difficulty="Easy" /></td>
-                    <td className="p-4 align-middle">
-                      <Button variant="tertiary" size="sm" className="h-8 text-xs">Solution</Button>
-                    </td>
-                    <td className="p-4 align-middle text-center">
-                      <BookmarkButton isBookmarked={false} />
-                    </td>
-                  </tr>
-                  <tr className="border-b transition-colors hover:bg-muted/50">
-                    <td className="p-4 align-middle text-center"><Checkbox checked={true} /></td>
-                    <td className="p-4 align-middle text-muted-foreground">02</td>
-                    <td className="p-4 align-middle font-medium">Second Largest Element</td>
-                    <td className="p-4 align-middle">
-                      <div className="flex gap-2">
-                        <PracticeLink platform="GeeksforGeeks" />
-                      </div>
-                    </td>
-                    <td className="p-4 align-middle"><DifficultyBadge difficulty="Medium" /></td>
-                    <td className="p-4 align-middle">
-                      <Button variant="tertiary" size="sm" className="h-8 text-xs">Solution</Button>
-                    </td>
-                    <td className="p-4 align-middle text-center">
-                      <BookmarkButton isBookmarked={true} />
-                    </td>
-                  </tr>
-                  <tr className="border-b transition-colors hover:bg-muted/50">
-                    <td className="p-4 align-middle text-center"><Checkbox checked={false} /></td>
-                    <td className="p-4 align-middle text-muted-foreground">03</td>
-                    <td className="p-4 align-middle font-medium">Check if Array Is Sorted</td>
-                    <td className="p-4 align-middle">
-                      <div className="flex gap-2">
-                        <PracticeLink platform="CodeChef" />
-                        <PracticeLink platform="LeetCode" />
-                      </div>
-                    </td>
-                    <td className="p-4 align-middle"><DifficultyBadge difficulty="Hard" /></td>
-                    <td className="p-4 align-middle">
-                      <Button variant="tertiary" size="sm" className="h-8 text-xs">Solution</Button>
-                    </td>
-                    <td className="p-4 align-middle text-center">
-                      <BookmarkButton isBookmarked={false} />
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </TopicDrawer>
-          
-          <TopicDrawer title="HASHING" solvedCount={8} totalCount={18}>
-            <div className="p-4 text-sm text-muted-foreground text-center">Questions loading...</div>
-          </TopicDrawer>
-
-          <TopicDrawer title="BINARY SEARCH" solvedCount={5} totalCount={15}>
-            <div className="p-4 text-sm text-muted-foreground text-center">Questions loading...</div>
-          </TopicDrawer>
-          
-          <TopicDrawer title="LINKED LIST" solvedCount={3} totalCount={20}>
-            <div className="p-4 text-sm text-muted-foreground text-center">Questions loading...</div>
-          </TopicDrawer>
-        </div>
-      </section>
-      
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
