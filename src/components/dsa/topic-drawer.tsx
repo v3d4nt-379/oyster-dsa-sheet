@@ -11,6 +11,7 @@ export interface TopicDrawerProps {
   totalCount: number
   children: React.ReactNode
   defaultExpanded?: boolean
+  forceExpand?: boolean
   className?: string
 }
 
@@ -20,9 +21,14 @@ export function TopicDrawer({
   totalCount,
   children,
   defaultExpanded = false,
+  forceExpand = false,
   className
 }: TopicDrawerProps) {
   const [isExpanded, setIsExpanded] = React.useState(defaultExpanded)
+  
+  React.useEffect(() => {
+    if (forceExpand) setIsExpanded(true)
+  }, [forceExpand])
   
   const percentage = totalCount > 0 ? (solvedCount / totalCount) * 100 : 0
 

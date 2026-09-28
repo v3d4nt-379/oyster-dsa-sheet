@@ -3,25 +3,25 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/firebase/auth-context"
-import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
-import { DifficultyBadge } from "@/components/dsa/difficulty-badge"
-import { PracticeLink } from "@/components/dsa/practice-link"
-import { BookmarkButton } from "@/components/dsa/bookmark-button"
 import { TopicDrawer } from "@/components/dsa/topic-drawer"
-import { Loader2 } from "lucide-react"
+import { Loader2, Search, X } from "lucide-react"
+import { MOCK_TOPICS, Topic } from "@/data/mock-questions"
+import { QuestionTable } from "@/components/dsa/question-table"
+import { ProgressBar } from "@/components/ui/progress"
+import { Button } from "@/components/ui/button"
 
 export default function SheetPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
   
-  // Local states for mock interaction
-  const [isBookmarked1, setIsBookmarked1] = React.useState(false)
-  const [isSolved1, setIsSolved1] = React.useState(true)
-  const [isBookmarked2, setIsBookmarked2] = React.useState(true)
-  const [isSolved2, setIsSolved2] = React.useState(true)
-  const [isBookmarked3, setIsBookmarked3] = React.useState(false)
-  const [isSolved3, setIsSolved3] = React.useState(false)
+  const [solvedIds, setSolvedIds] = React.useState<Set<string>>(new Set())
+  const [bookmarkedIds, setBookmarkedIds] = React.useState<Set<string>>(new Set())
+
+  const [searchQuery, setSearchQuery] = React.useState("")
+  const [difficultyFilter, setDifficultyFilter] = React.useState("All")
+  const [statusFilter, setStatusFilter] = React.useState("All")
+  const [topicFilter, setTopicFilter] = React.useState("All")
+  const [bookmarkFilter, setBookmarkFilter] = React.useState("All")
 
   React.useEffect(() => {
     if (!loading && !user) {
@@ -37,106 +37,196 @@ export default function SheetPage() {
     )
   }
 
+  const toggleSolved = (id: string) => {
+    setSolvedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleBookmark = (id: string) => {
+    setBookmarkedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const clearFilters = () => {
+    setSearchQuery("")
+    setDifficultyFilter("All")
+    setStatusFilter("All")
+    setTopicFilter("All")
+    setBookmarkFilter("All")
+  }
+
+  const isFiltering = 
+    searchQuery !== "" || 
+    difficultyFilter !== "All" || 
+    statusFilter !== "All" || 
+    topicFilter !== "All" || 
+    bookmarkFilter !== "All"
+
+  // Process data
+  let totalQuestionsCount = 0
+  
+  const filteredTopics: (Topic & { matchedQuestionsCount: number })[] = MOCK_TOPICS.map(topic => {
+    totalQuestionsCount += topic.questions.length
+
+    if (topicFilter !== "All" && topic.id !== topicFilter) {
+      return { ...topic, questions: [], matchedQuestionsCount: 0 }
+    }
+
+    const filteredQuestions = topic.questions.filter(q => {
+      const globalId = `${topic.id}-${q.id}`
+      const isSolved = solvedIds.has(globalId)
+      const isBookmarked = bookmarkedIds.has(globalId)
+
+      // Difficulty
+      if (difficultyFilter !== "All" && q.difficulty !== difficultyFilter) return false
+      // Status
+      if (statusFilter === "Solved" && !isSolved) return false
+      if (statusFilter === "Unsolved" && isSolved) return false
+      // Bookmark
+      if (bookmarkFilter === "Bookmarked" && !isBookmarked) return false
+      // Search
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase()
+        if (!q.title.toLowerCase().includes(query) && !q.id.toLowerCase().includes(query)) {
+          return false
+        }
+      }
+
+      return true
+    })
+
+    return { ...topic, questions: filteredQuestions, matchedQuestionsCount: filteredQuestions.length }
+  }).filter(topic => topic.matchedQuestionsCount > 0) // Hide topics with 0 matches
+
+  const totalSolvedCount = solvedIds.size
+  const overallPercentage = totalQuestionsCount > 0 ? (totalSolvedCount / totalQuestionsCount) * 100 : 0
+
   return (
     <div className="mx-auto max-w-5xl space-y-8 pb-12">
-      <div className="space-y-2 border-b pb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Welcome, {user.displayName || "User"}</h1>
-        <p className="text-muted-foreground">
-          Continue your DSA practice. You've got this.
+      {/* Sheet Introduction */}
+      <div className="space-y-4 border-b pb-6">
+        <h1 className="text-3xl font-extrabold tracking-tight">DSA Sheet</h1>
+        <p className="text-muted-foreground text-lg">
+          A structured roadmap to practice, track, and master Data Structures & Algorithms.
         </p>
+        
+        {/* Overall Progress */}
+        <div className="flex flex-col gap-2 pt-2 max-w-md">
+          <div className="flex justify-between text-sm font-medium">
+            <span>Overall Progress</span>
+            <span>{totalSolvedCount} / {totalQuestionsCount} problems solved</span>
+          </div>
+          <ProgressBar value={overallPercentage} className="h-2" />
+        </div>
       </div>
 
+      {/* Toolbar / Filters */}
+      <div className="flex flex-col gap-4 rounded-lg bg-card p-4 shadow-sm border md:flex-row md:items-center md:flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search questions..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-4 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+          />
+        </div>
+        
+        <select 
+          value={topicFilter} 
+          onChange={(e) => setTopicFilter(e.target.value)}
+          className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <option value="All">All Topics</option>
+          {MOCK_TOPICS.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+        </select>
+
+        <select 
+          value={difficultyFilter} 
+          onChange={(e) => setDifficultyFilter(e.target.value)}
+          className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <option value="All">All Difficulties</option>
+          <option value="Easy">Easy</option>
+          <option value="Medium">Medium</option>
+          <option value="Hard">Hard</option>
+        </select>
+
+        <select 
+          value={statusFilter} 
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <option value="All">All Statuses</option>
+          <option value="Solved">Solved</option>
+          <option value="Unsolved">Unsolved</option>
+        </select>
+
+        <select 
+          value={bookmarkFilter} 
+          onChange={(e) => setBookmarkFilter(e.target.value)}
+          className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <option value="All">All Bookmarks</option>
+          <option value="Bookmarked">Bookmarked</option>
+        </select>
+
+        {isFiltering && (
+          <Button variant="tertiary" size="sm" onClick={clearFilters} className="h-10 px-3 text-muted-foreground hover:text-foreground">
+            <X className="mr-2 h-4 w-4" />
+            Clear
+          </Button>
+        )}
+      </div>
+
+      {/* Main Sheet */}
       <div className="space-y-4">
-        {/* Mock Data Topic Drawers */}
-        <TopicDrawer title="ARRAYS" solvedCount={2} totalCount={3} defaultExpanded>
-          <div className="w-full overflow-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b transition-colors hover:bg-muted/50 text-left">
-                  <th className="h-12 px-4 align-middle font-medium text-muted-foreground w-12 text-center">Status</th>
-                  <th className="h-12 px-4 align-middle font-medium text-muted-foreground w-16">ID</th>
-                  <th className="h-12 px-4 align-middle font-medium text-muted-foreground">Question</th>
-                  <th className="h-12 px-4 align-middle font-medium text-muted-foreground w-48">Practice</th>
-                  <th className="h-12 px-4 align-middle font-medium text-muted-foreground w-28">Difficulty</th>
-                  <th className="h-12 px-4 align-middle font-medium text-muted-foreground w-24">Solution</th>
-                  <th className="h-12 px-4 align-middle font-medium text-muted-foreground w-12 text-center">Bookmark</th>
-                </tr>
-              </thead>
-              <tbody className="[&_tr:last-child]:border-0">
-                <tr className="border-b transition-colors hover:bg-muted/50">
-                  <td className="p-4 align-middle text-center">
-                    <Checkbox checked={isSolved1} onCheckedChange={setIsSolved1} />
-                  </td>
-                  <td className="p-4 align-middle text-muted-foreground">01</td>
-                  <td className="p-4 align-middle font-medium">Largest Element in an Array</td>
-                  <td className="p-4 align-middle">
-                    <div className="flex gap-2">
-                      <PracticeLink platform="LeetCode" />
-                    </div>
-                  </td>
-                  <td className="p-4 align-middle"><DifficultyBadge difficulty="Easy" /></td>
-                  <td className="p-4 align-middle">
-                    <Button variant="tertiary" size="sm" className="h-8 text-xs">Solution</Button>
-                  </td>
-                  <td className="p-4 align-middle text-center">
-                    <BookmarkButton isBookmarked={isBookmarked1} onToggleBookmark={setIsBookmarked1} />
-                  </td>
-                </tr>
-                <tr className="border-b transition-colors hover:bg-muted/50">
-                  <td className="p-4 align-middle text-center">
-                    <Checkbox checked={isSolved2} onCheckedChange={setIsSolved2} />
-                  </td>
-                  <td className="p-4 align-middle text-muted-foreground">02</td>
-                  <td className="p-4 align-middle font-medium">Second Largest Element</td>
-                  <td className="p-4 align-middle">
-                    <div className="flex gap-2">
-                      <PracticeLink platform="GeeksforGeeks" />
-                    </div>
-                  </td>
-                  <td className="p-4 align-middle"><DifficultyBadge difficulty="Medium" /></td>
-                  <td className="p-4 align-middle">
-                    <Button variant="tertiary" size="sm" className="h-8 text-xs">Solution</Button>
-                  </td>
-                  <td className="p-4 align-middle text-center">
-                    <BookmarkButton isBookmarked={isBookmarked2} onToggleBookmark={setIsBookmarked2} />
-                  </td>
-                </tr>
-                <tr className="border-b transition-colors hover:bg-muted/50">
-                  <td className="p-4 align-middle text-center">
-                    <Checkbox checked={isSolved3} onCheckedChange={setIsSolved3} />
-                  </td>
-                  <td className="p-4 align-middle text-muted-foreground">03</td>
-                  <td className="p-4 align-middle font-medium">Check if Array Is Sorted</td>
-                  <td className="p-4 align-middle">
-                    <div className="flex gap-2">
-                      <PracticeLink platform="CodeChef" />
-                      <PracticeLink platform="LeetCode" />
-                    </div>
-                  </td>
-                  <td className="p-4 align-middle"><DifficultyBadge difficulty="Hard" /></td>
-                  <td className="p-4 align-middle">
-                    <Button variant="tertiary" size="sm" className="h-8 text-xs">Solution</Button>
-                  </td>
-                  <td className="p-4 align-middle text-center">
-                    <BookmarkButton isBookmarked={isBookmarked3} onToggleBookmark={setIsBookmarked3} />
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+        {filteredTopics.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center animate-in fade-in">
+            <h3 className="mt-4 text-lg font-semibold">No questions found</h3>
+            <p className="mb-4 mt-2 text-sm text-muted-foreground">
+              Try changing your search or filters to find what you're looking for.
+            </p>
+            <Button variant="secondary" onClick={clearFilters}>
+              Clear Filters
+            </Button>
           </div>
-        </TopicDrawer>
-        
-        <TopicDrawer title="HASHING" solvedCount={0} totalCount={4}>
-          <div className="p-4 text-sm text-muted-foreground text-center">Questions loading...</div>
-        </TopicDrawer>
-        
-        <TopicDrawer title="BINARY SEARCH" solvedCount={0} totalCount={8}>
-          <div className="p-4 text-sm text-muted-foreground text-center">Questions loading...</div>
-        </TopicDrawer>
-        
-        <TopicDrawer title="LINKED LIST" solvedCount={0} totalCount={12}>
-          <div className="p-4 text-sm text-muted-foreground text-center">Questions loading...</div>
-        </TopicDrawer>
+        ) : (
+          filteredTopics.map((topic) => {
+            // Find original topic to calculate real progress (solved out of total available in that topic)
+            const originalTopic = MOCK_TOPICS.find(t => t.id === topic.id)!
+            const originalTotal = originalTopic.questions.length
+            const originalSolved = originalTopic.questions.filter(q => solvedIds.has(`${topic.id}-${q.id}`)).length
+
+            return (
+              <TopicDrawer 
+                key={topic.id} 
+                title={topic.title} 
+                solvedCount={originalSolved} 
+                totalCount={originalTotal}
+                forceExpand={isFiltering}
+              >
+                <QuestionTable 
+                  topicId={topic.id}
+                  questions={topic.questions}
+                  solvedIds={solvedIds}
+                  bookmarkedIds={bookmarkedIds}
+                  onToggleSolved={toggleSolved}
+                  onToggleBookmark={toggleBookmark}
+                />
+              </TopicDrawer>
+            )
+          })
+        )}
       </div>
     </div>
   )
