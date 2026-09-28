@@ -4,11 +4,11 @@ import { DifficultyBadge } from "@/components/dsa/difficulty-badge"
 import { PracticeLink } from "@/components/dsa/practice-link"
 import { BookmarkButton } from "@/components/dsa/bookmark-button"
 import { Button } from "@/components/ui/button"
-import { Question } from "@/data/mock-questions"
+import { AppQuestion } from "@/types"
 
 export interface QuestionTableProps {
   topicId: string
-  questions: Question[]
+  questions: AppQuestion[]
   solvedIds: Set<string>
   bookmarkedIds: Set<string>
   onToggleSolved: (globalId: string) => void
@@ -39,7 +39,7 @@ export function QuestionTable({
         </thead>
         <tbody className="[&_tr:last-child]:border-0">
           {questions.map((q) => {
-            const globalId = `${topicId}-${q.id}`
+            const globalId = q.id // q.id is now the globally unique document ID
             const isSolved = solvedIds.has(globalId)
             const isBookmarked = bookmarkedIds.has(globalId)
 
@@ -52,7 +52,7 @@ export function QuestionTable({
                   />
                 </td>
                 <td className="p-4 align-middle text-muted-foreground font-mono text-xs shrink-0">
-                  {q.id}
+                  {q.questionId}
                 </td>
                 <td className="p-4 align-middle font-medium">
                   {q.title}

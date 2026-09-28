@@ -4,16 +4,21 @@ import * as React from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/firebase/auth-context"
 import { TopicDrawer } from "@/components/dsa/topic-drawer"
-import { Loader2, Search, X } from "lucide-react"
-import { MOCK_TOPICS, Topic } from "@/data/mock-questions"
+import { Loader2, Search, X, AlertCircle } from "lucide-react"
 import { QuestionTable } from "@/components/dsa/question-table"
 import { ProgressBar } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
+import { AppTopic } from "@/types"
+import { fetchSheetData } from "@/lib/firestore/api"
 
 export default function SheetPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
   
+  const [topics, setTopics] = React.useState<AppTopic[]>([])
+  const [isLoadingData, setIsLoadingData] = React.useState(true)
+  const [error, setError] = React.useState<string | null>(null)
+
   const [solvedIds, setSolvedIds] = React.useState<Set<string>>(new Set())
   const [bookmarkedIds, setBookmarkedIds] = React.useState<Set<string>>(new Set())
 
@@ -23,16 +28,54 @@ export default function SheetPage() {
   const [topicFilter, setTopicFilter] = React.useState("All")
   const [bookmarkFilter, setBookmarkFilter] = React.useState("All")
 
+  const loadData = React.useCallback(async () => {
+    try {
+      setIsLoadingData(true)
+      setError(null)
+      const data = await fetchSheetData()
+      setTopics(data)
+    } catch (err) {
+      console.error("Error loading sheet data:", err)
+      setError("Unable to load the DSA sheet.")
+    } finally {
+      setIsLoadingData(false)
+    }
+  }, [])
+
   React.useEffect(() => {
     if (!loading && !user) {
       router.push("/")
+    } else if (user) {
+      loadData()
     }
-  }, [user, loading, router])
+  }, [user, loading, router, loadData])
 
   if (loading || !user) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 text-center">
+        <AlertCircle className="h-10 w-10 text-destructive" />
+        <div className="space-y-1">
+          <h3 className="text-xl font-bold">{error}</h3>
+          <p className="text-muted-foreground">Please check your connection and try again.</p>
+        </div>
+        <Button onClick={loadData} variant="secondary">Retry</Button>
+      </div>
+    )
+  }
+
+  if (isLoadingData) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <p className="text-muted-foreground animate-pulse">Loading global sheet...</p>
       </div>
     )
   }
@@ -73,7 +116,7 @@ export default function SheetPage() {
   // Process data
   let totalQuestionsCount = 0
   
-  const filteredTopics: (Topic & { matchedQuestionsCount: number })[] = MOCK_TOPICS.map(topic => {
+  const filteredTopics: (AppTopic & { matchedQuestionsCount: number })[] = topics.map(topic => {
     totalQuestionsCount += topic.questions.length
 
     if (topicFilter !== "All" && topic.id !== topicFilter) {
@@ -81,7 +124,7 @@ export default function SheetPage() {
     }
 
     const filteredQuestions = topic.questions.filter(q => {
-      const globalId = `${topic.id}-${q.id}`
+      const globalId = q.id
       const isSolved = solvedIds.has(globalId)
       const isBookmarked = bookmarkedIds.has(globalId)
 
@@ -95,7 +138,7 @@ export default function SheetPage() {
       // Search
       if (searchQuery) {
         const query = searchQuery.toLowerCase()
-        if (!q.title.toLowerCase().includes(query) && !q.id.toLowerCase().includes(query)) {
+        if (!q.title.toLowerCase().includes(query) && !q.questionId.toLowerCase().includes(query)) {
           return false
         }
       }
@@ -147,7 +190,7 @@ export default function SheetPage() {
           className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <option value="All">All Topics</option>
-          {MOCK_TOPICS.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+          {topics.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
         </select>
 
         <select 
@@ -190,7 +233,14 @@ export default function SheetPage() {
 
       {/* Main Sheet */}
       <div className="space-y-4">
-        {filteredTopics.length === 0 ? (
+        {topics.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
+            <h3 className="mt-4 text-lg font-semibold">Sheet is empty</h3>
+            <p className="mb-4 mt-2 text-sm text-muted-foreground">
+              No topics or questions found in the database.
+            </p>
+          </div>
+        ) : filteredTopics.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center animate-in fade-in">
             <h3 className="mt-4 text-lg font-semibold">No questions found</h3>
             <p className="mb-4 mt-2 text-sm text-muted-foreground">
@@ -203,9 +253,9 @@ export default function SheetPage() {
         ) : (
           filteredTopics.map((topic) => {
             // Find original topic to calculate real progress (solved out of total available in that topic)
-            const originalTopic = MOCK_TOPICS.find(t => t.id === topic.id)!
+            const originalTopic = topics.find(t => t.id === topic.id)!
             const originalTotal = originalTopic.questions.length
-            const originalSolved = originalTopic.questions.filter(q => solvedIds.has(`${topic.id}-${q.id}`)).length
+            const originalSolved = originalTopic.questions.filter(q => solvedIds.has(q.id)).length
 
             return (
               <TopicDrawer 
