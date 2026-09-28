@@ -5,18 +5,18 @@ service cloud.firestore {
     
     // Topics Collection
     // Read: authenticated users only
-    // Write: denied from client (will be updated in Phase 8 for admins)
+    // Write: admin only
     match /topics/{topicId} {
       allow read: if request.auth != null;
-      allow write: if false; 
+      allow create, update, delete: if request.auth != null && request.auth.token.admin == true;
     }
     
     // Questions Collection
     // Read: authenticated users only
-    // Write: denied from client (will be updated in Phase 8 for admins)
+    // Write: admin only
     match /questions/{questionId} {
       allow read: if request.auth != null;
-      allow write: if false;
+      allow create, update, delete: if request.auth != null && request.auth.token.admin == true;
     }
     
     // User Specific Data (Phase 5)

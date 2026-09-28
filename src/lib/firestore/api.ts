@@ -32,6 +32,15 @@ export async function fetchSheetData(): Promise<AppTopic[]> {
     if (data.gfgUrl) links.push({ platform: "GeeksforGeeks", url: data.gfgUrl })
     if (data.codechefUrl) links.push({ platform: "CodeChef", url: data.codechefUrl })
 
+    let parsedSolution = data.solution
+    
+    // Backward compatibility: If an old `solutionMarkdown` field exists and no new `solution` object is set, adapt it.
+    if (!parsedSolution && data.solutionMarkdown) {
+      parsedSolution = {
+        explanationMarkdown: data.solutionMarkdown
+      }
+    }
+
     const question: AppQuestion = {
       id: doc.id,
       questionId: data.questionId,
@@ -39,7 +48,8 @@ export async function fetchSheetData(): Promise<AppTopic[]> {
       topicId: data.topicId,
       difficulty: data.difficulty,
       links,
-      order: data.order
+      order: data.order,
+      solution: parsedSolution || undefined
     }
 
     if (topicsMap[question.topicId]) {

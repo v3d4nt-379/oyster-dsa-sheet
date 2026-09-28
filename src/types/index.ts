@@ -13,6 +13,15 @@ export interface AppQuestion {
   difficulty: Difficulty
   links: PracticeLinkData[]
   order: number
+  solution?: QuestionSolution
+}
+
+export type QuestionSolution = {
+  explanationMarkdown?: string;
+  timeComplexity?: string;
+  spaceComplexity?: string;
+  cppCode?: string;
+  javaCode?: string;
 }
 
 export interface AppTopic {

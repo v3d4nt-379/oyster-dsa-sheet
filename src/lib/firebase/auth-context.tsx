@@ -13,6 +13,7 @@ import { auth } from "./config"
 interface AuthContextType {
   user: User | null
   loading: boolean
+  isAdmin: boolean
   signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
   error: string | null
@@ -21,6 +22,7 @@ interface AuthContextType {
 const AuthContext = React.createContext<AuthContextType>({
   user: null,
   loading: true,
+  isAdmin: false,
   signInWithGoogle: async () => {},
   signOut: async () => {},
   error: null
@@ -29,6 +31,7 @@ const AuthContext = React.createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<User | null>(null)
   const [loading, setLoading] = React.useState(true)
+  const [isAdmin, setIsAdmin] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
@@ -37,8 +40,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false)
       return
     }
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser)
+      if (currentUser) {
+        try {
+          const tokenResult = await currentUser.getIdTokenResult()
+          setIsAdmin(!!tokenResult.claims.admin)
+        } catch (err) {
+          console.error("Failed to fetch token claims", err)
+          setIsAdmin(false)
+        }
+      } else {
+        setIsAdmin(false)
+      }
       setLoading(false)
     })
     return () => unsubscribe()
@@ -74,7 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, signInWithGoogle, signOut, error }}>
+    <AuthContext.Provider value={{ user, loading, isAdmin, signInWithGoogle, signOut, error }}>
       {children}
     </AuthContext.Provider>
   )
