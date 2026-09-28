@@ -10,6 +10,14 @@ import { ProgressBar } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { AppTopic } from "@/types"
 import { fetchSheetData } from "@/lib/firestore/api"
+import { 
+  getUserSolvedIds, 
+  getUserBookmarkIds, 
+  markQuestionSolved, 
+  markQuestionUnsolved, 
+  addBookmark, 
+  removeBookmark 
+} from "@/lib/firestore/user-progress"
 
 export default function SheetPage() {
   const { user, loading } = useAuth()
@@ -18,6 +26,7 @@ export default function SheetPage() {
   const [topics, setTopics] = React.useState<AppTopic[]>([])
   const [isLoadingData, setIsLoadingData] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
+  const [actionError, setActionError] = React.useState<string | null>(null)
 
   const [solvedIds, setSolvedIds] = React.useState<Set<string>>(new Set())
   const [bookmarkedIds, setBookmarkedIds] = React.useState<Set<string>>(new Set())
@@ -28,12 +37,21 @@ export default function SheetPage() {
   const [topicFilter, setTopicFilter] = React.useState("All")
   const [bookmarkFilter, setBookmarkFilter] = React.useState("All")
 
-  const loadData = React.useCallback(async () => {
+  const loadData = React.useCallback(async (uid: string) => {
     try {
       setIsLoadingData(true)
       setError(null)
-      const data = await fetchSheetData()
+      
+      const [data, solved, bookmarks] = await Promise.all([
+        fetchSheetData(),
+        getUserSolvedIds(uid),
+        getUserBookmarkIds(uid)
+      ])
+      
       setTopics(data)
+      setSolvedIds(solved)
+      setBookmarkedIds(bookmarks)
+      
     } catch (err) {
       console.error("Error loading sheet data:", err)
       setError("Unable to load the DSA sheet.")
@@ -46,9 +64,17 @@ export default function SheetPage() {
     if (!loading && !user) {
       router.push("/")
     } else if (user) {
-      loadData()
+      loadData(user.uid)
     }
   }, [user, loading, router, loadData])
+
+  // Clear action error after a few seconds
+  React.useEffect(() => {
+    if (actionError) {
+      const timer = setTimeout(() => setActionError(null), 4000)
+      return () => clearTimeout(timer)
+    }
+  }, [actionError])
 
   if (loading || !user) {
     return (
@@ -66,7 +92,7 @@ export default function SheetPage() {
           <h3 className="text-xl font-bold">{error}</h3>
           <p className="text-muted-foreground">Please check your connection and try again.</p>
         </div>
-        <Button onClick={loadData} variant="secondary">Retry</Button>
+        <Button onClick={() => loadData(user.uid)} variant="secondary">Retry</Button>
       </div>
     )
   }
@@ -75,27 +101,69 @@ export default function SheetPage() {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        <p className="text-muted-foreground animate-pulse">Loading global sheet...</p>
+        <p className="text-muted-foreground animate-pulse">Loading your progress...</p>
       </div>
     )
   }
 
-  const toggleSolved = (id: string) => {
+  const toggleSolved = async (id: string) => {
+    const isCurrentlySolved = solvedIds.has(id)
+    
+    // Optimistic UI update
     setSolvedIds(prev => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
+      if (isCurrentlySolved) next.delete(id)
       else next.add(id)
       return next
     })
+
+    try {
+      if (isCurrentlySolved) {
+        await markQuestionUnsolved(user.uid, id)
+      } else {
+        await markQuestionSolved(user.uid, id)
+      }
+    } catch (err) {
+      console.error("Failed to toggle solved state:", err)
+      // Rollback
+      setSolvedIds(prev => {
+        const next = new Set(prev)
+        if (isCurrentlySolved) next.add(id)
+        else next.delete(id)
+        return next
+      })
+      setActionError("Couldn't save your progress. Please try again.")
+    }
   }
 
-  const toggleBookmark = (id: string) => {
+  const toggleBookmark = async (id: string) => {
+    const isCurrentlyBookmarked = bookmarkedIds.has(id)
+    
+    // Optimistic UI update
     setBookmarkedIds(prev => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
+      if (isCurrentlyBookmarked) next.delete(id)
       else next.add(id)
       return next
     })
+
+    try {
+      if (isCurrentlyBookmarked) {
+        await removeBookmark(user.uid, id)
+      } else {
+        await addBookmark(user.uid, id)
+      }
+    } catch (err) {
+      console.error("Failed to toggle bookmark state:", err)
+      // Rollback
+      setBookmarkedIds(prev => {
+        const next = new Set(prev)
+        if (isCurrentlyBookmarked) next.add(id)
+        else next.delete(id)
+        return next
+      })
+      setActionError("Couldn't update bookmark. Please try again.")
+    }
   }
 
   const clearFilters = () => {
@@ -153,7 +221,16 @@ export default function SheetPage() {
   const overallPercentage = totalQuestionsCount > 0 ? (totalSolvedCount / totalQuestionsCount) * 100 : 0
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8 pb-12">
+    <div className="mx-auto max-w-5xl space-y-8 pb-12 relative">
+      
+      {/* Toast Error Notification */}
+      {actionError && (
+        <div className="fixed bottom-4 right-4 z-50 bg-destructive text-destructive-foreground px-4 py-3 rounded-md shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-bottom-4">
+          <AlertCircle className="h-4 w-4" />
+          <p className="text-sm font-medium">{actionError}</p>
+        </div>
+      )}
+
       {/* Sheet Introduction */}
       <div className="space-y-4 border-b pb-6">
         <h1 className="text-3xl font-extrabold tracking-tight">DSA Sheet</h1>
