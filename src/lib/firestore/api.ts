@@ -1,4 +1,4 @@
-import { collection, getDocs, query, orderBy } from "firebase/firestore"
+import { collection, getDocs, query, orderBy, doc, getDoc } from "firebase/firestore"
 import { db } from "../firebase/firestore"
 import { AppTopic, AppQuestion, PracticeLinkData } from "@/types"
 
@@ -61,4 +61,36 @@ export async function fetchSheetData(): Promise<AppTopic[]> {
 
   // Return topics sorted by their order
   return Object.values(topicsMap).sort((a, b) => a.order - b.order)
+}
+
+export async function getQuestionById(questionId: string): Promise<AppQuestion | null> {
+  if (!db) throw new Error("Firestore is not initialized")
+  
+  const docRef = doc(db, "questions", questionId)
+  const docSnap = await getDoc(docRef)
+  
+  if (!docSnap.exists()) return null
+  
+  const data = docSnap.data()
+  const links: PracticeLinkData[] = []
+  
+  if (data.leetcodeUrl) links.push({ platform: "LeetCode", url: data.leetcodeUrl })
+  if (data.gfgUrl) links.push({ platform: "GeeksforGeeks", url: data.gfgUrl })
+  if (data.codechefUrl) links.push({ platform: "CodeChef", url: data.codechefUrl })
+  
+  let parsedSolution = data.solution
+  if (!parsedSolution && data.solutionMarkdown) {
+    parsedSolution = { explanationMarkdown: data.solutionMarkdown }
+  }
+  
+  return {
+    id: docSnap.id,
+    questionId: data.questionId,
+    title: data.title,
+    topicId: data.topicId,
+    difficulty: data.difficulty,
+    links,
+    order: data.order,
+    solution: parsedSolution || undefined
+  }
 }

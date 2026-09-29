@@ -5,6 +5,7 @@ import { PracticeLink } from "@/components/dsa/practice-link"
 import { BookmarkButton } from "@/components/dsa/bookmark-button"
 import { Button } from "@/components/ui/button"
 import { AppQuestion } from "@/types"
+import Link from "next/link"
 
 export interface QuestionTableProps {
   topicId: string
@@ -68,9 +69,11 @@ export function QuestionTable({
                   <DifficultyBadge difficulty={q.difficulty} />
                 </td>
                 <td className="p-4 align-middle shrink-0">
-                  <Button variant="tertiary" size="sm" className="h-8 text-xs font-medium px-3">
-                    Solution
-                  </Button>
+                  <Link href={`/sheet/question/${globalId}/solution`}>
+                    <Button variant="tertiary" size="sm" className="h-8 text-xs font-medium px-3">
+                      Solution
+                    </Button>
+                  </Link>
                 </td>
                 <td className="p-4 align-middle text-center shrink-0">
                   <BookmarkButton 
