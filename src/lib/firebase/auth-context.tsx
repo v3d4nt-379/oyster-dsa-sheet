@@ -46,6 +46,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const tokenResult = await currentUser.getIdTokenResult()
           setIsAdmin(!!tokenResult.claims.admin)
+          
+          // Initialize profile asynchronously (non-blocking)
+          import("@/lib/firestore/user-profile").then(({ createUserProfileIfMissing }) => {
+            if (currentUser.uid) {
+              createUserProfileIfMissing(currentUser.uid).catch(e => console.error("Profile init error:", e))
+            }
+          })
         } catch (err) {
           console.error("Failed to fetch token claims", err)
           setIsAdmin(false)

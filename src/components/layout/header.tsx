@@ -5,6 +5,7 @@ import { useTheme } from "next-themes"
 import { Moon, Sun, UserCircle, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/firebase/auth-context"
+import Link from "next/link"
 
 export function Header() {
   const { setTheme, theme } = useTheme()
@@ -69,9 +70,18 @@ export function Header() {
                       <p className="text-xs text-muted-foreground truncate">{user.email}</p>
                     </div>
                     <div className="p-1">
+                      <Link href="/profile" onClick={() => setIsMenuOpen(false)}>
+                        <Button 
+                          variant="tertiary" 
+                          className="w-full justify-start rounded-sm px-2 text-sm text-foreground hover:bg-muted"
+                        >
+                          <UserCircle className="mr-2 h-4 w-4" />
+                          Profile
+                        </Button>
+                      </Link>
                       <Button 
                         variant="tertiary" 
-                        className="w-full justify-start rounded-sm px-2 text-sm text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        className="w-full justify-start rounded-sm px-2 text-sm text-destructive hover:bg-destructive/10 hover:text-destructive mt-1"
                         onClick={() => {
                           setIsMenuOpen(false)
                           signOut()

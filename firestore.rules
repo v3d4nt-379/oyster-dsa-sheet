@@ -19,14 +19,18 @@ service cloud.firestore {
       allow create, update, delete: if request.auth != null && request.auth.token.admin == true;
     }
     
-    // User Specific Data (Phase 5)
-    match /users/{userId}/solved/{questionId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    // User Specific Data (Phase 5 + 8)
+    match /users/{userId} {
+      allow read, create: if request.auth != null && request.auth.uid == userId;
+      allow delete, update: if false;
+
+      match /solved/{questionId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      
+      match /bookmarks/{questionId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
-    
-    match /users/{userId}/bookmarks/{questionId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-    
   }
 }

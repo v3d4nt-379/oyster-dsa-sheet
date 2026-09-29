@@ -31,3 +31,9 @@ export interface AppTopic {
   order: number
   questions: AppQuestion[]
 }
+
+export interface UserProfile {
+  uid: string
+  createdAt?: any
+  updatedAt?: any
+}
