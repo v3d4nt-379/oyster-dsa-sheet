@@ -2,19 +2,20 @@ import { collection, doc, setDoc, deleteDoc, serverTimestamp, updateDoc } from "
 import { db } from "../firebase/firestore"
 import { AppTopic, AppQuestion, QuestionSolution } from "@/types"
 
-export async function createTopic(topicId: string, name: string, description: string, order: number): Promise<void> {
+export async function createTopic(topicId: string, name: string, description: string, order: number, enabled: boolean = true): Promise<void> {
   if (!db) throw new Error("Firestore not initialized")
   const docRef = doc(db, "topics", topicId)
   await setDoc(docRef, {
     name,
     description,
     order,
+    enabled,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   })
 }
 
-export async function updateTopic(topicId: string, updates: Partial<{ name: string; description: string; order: number }>): Promise<void> {
+export async function updateTopic(topicId: string, updates: Partial<{ name: string; description: string; order: number; enabled: boolean }>): Promise<void> {
   if (!db) throw new Error("Firestore not initialized")
   const docRef = doc(db, "topics", topicId)
   await updateDoc(docRef, {
@@ -41,12 +42,16 @@ export async function createQuestion(
     codechefUrl: string | null
     order: number
     solution?: QuestionSolution
+    enabled?: boolean
+    solutionEnabled?: boolean
   }
 ): Promise<void> {
   if (!db) throw new Error("Firestore not initialized")
   const docRef = doc(db, "questions", globalQuestionId)
   await setDoc(docRef, {
     ...data,
+    enabled: data.enabled ?? true,
+    solutionEnabled: data.solutionEnabled ?? true,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   })
@@ -64,6 +69,8 @@ export async function updateQuestion(
     codechefUrl: string | null
     order: number
     solution: QuestionSolution | null
+    enabled: boolean
+    solutionEnabled: boolean
   }>
 ): Promise<void> {
   if (!db) throw new Error("Firestore not initialized")

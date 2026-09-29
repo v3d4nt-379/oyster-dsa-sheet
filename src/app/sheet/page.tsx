@@ -9,7 +9,7 @@ import { QuestionTable } from "@/components/dsa/question-table"
 import { ProgressBar } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { AppTopic } from "@/types"
-import { fetchSheetData } from "@/lib/firestore/api"
+import { subscribeToSheetData } from "@/lib/firestore/api"
 import { 
   getUserSolvedIds, 
   getUserBookmarkIds, 
@@ -20,7 +20,7 @@ import {
 } from "@/lib/firestore/user-progress"
 
 export default function SheetPage() {
-  const { user, loading } = useAuth()
+  const { user, loading, isAdmin } = useAuth()
   const router = useRouter()
   
   const [topics, setTopics] = React.useState<AppTopic[]>([])
@@ -37,26 +37,17 @@ export default function SheetPage() {
   const [topicFilter, setTopicFilter] = React.useState("All")
   const [bookmarkFilter, setBookmarkFilter] = React.useState("All")
 
-  const loadData = React.useCallback(async (uid: string) => {
+  const loadUserProgress = React.useCallback(async (uid: string) => {
     try {
-      setIsLoadingData(true)
-      setError(null)
-      
-      const [data, solved, bookmarks] = await Promise.all([
-        fetchSheetData(),
+      const [solved, bookmarks] = await Promise.all([
         getUserSolvedIds(uid),
         getUserBookmarkIds(uid)
       ])
-      
-      setTopics(data)
       setSolvedIds(solved)
       setBookmarkedIds(bookmarks)
-      
     } catch (err) {
-      console.error("Error loading sheet data:", err)
-      setError("Unable to load the DSA sheet.")
-    } finally {
-      setIsLoadingData(false)
+      console.error("Error loading user progress:", err)
+      setActionError("Unable to load your progress.")
     }
   }, [])
 
@@ -64,9 +55,25 @@ export default function SheetPage() {
     if (!loading && !user) {
       router.push("/")
     } else if (user) {
-      loadData(user.uid)
+      loadUserProgress(user.uid)
+      
+      setIsLoadingData(true)
+      const unsubscribe = subscribeToSheetData(
+        (data) => {
+          setTopics(data)
+          setIsLoadingData(false)
+          setError(null)
+        },
+        (err) => {
+          console.error("Error loading sheet data:", err)
+          setError("Unable to load the DSA sheet.")
+          setIsLoadingData(false)
+        }
+      )
+      
+      return () => unsubscribe()
     }
-  }, [user, loading, router, loadData])
+  }, [user, loading, router, loadUserProgress])
 
   // Clear action error after a few seconds
   React.useEffect(() => {
@@ -92,7 +99,6 @@ export default function SheetPage() {
           <h3 className="text-xl font-bold">{error}</h3>
           <p className="text-muted-foreground">Please check your connection and try again.</p>
         </div>
-        <Button onClick={() => loadData(user.uid)} variant="secondary">Retry</Button>
       </div>
     )
   }
@@ -101,7 +107,7 @@ export default function SheetPage() {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        <p className="text-muted-foreground animate-pulse">Loading your progress...</p>
+        <p className="text-muted-foreground animate-pulse">Loading sheet...</p>
       </div>
     )
   }
@@ -183,41 +189,56 @@ export default function SheetPage() {
 
   // Process data
   let totalQuestionsCount = 0
+  let totalSolvedCount = 0
   
-  const filteredTopics: (AppTopic & { matchedQuestionsCount: number })[] = topics.map(topic => {
-    totalQuestionsCount += topic.questions.length
-
-    if (topicFilter !== "All" && topic.id !== topicFilter) {
-      return { ...topic, questions: [], matchedQuestionsCount: 0 }
-    }
-
-    const filteredQuestions = topic.questions.filter(q => {
-      const globalId = q.id
-      const isSolved = solvedIds.has(globalId)
-      const isBookmarked = bookmarkedIds.has(globalId)
-
-      // Difficulty
-      if (difficultyFilter !== "All" && q.difficulty !== difficultyFilter) return false
-      // Status
-      if (statusFilter === "Solved" && !isSolved) return false
-      if (statusFilter === "Unsolved" && isSolved) return false
-      // Bookmark
-      if (bookmarkFilter === "Bookmarked" && !isBookmarked) return false
-      // Search
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase()
-        if (!q.title.toLowerCase().includes(query) && !q.questionId.toLowerCase().includes(query)) {
-          return false
+  const filteredTopics: (AppTopic & { matchedQuestionsCount: number })[] = topics
+    .filter(topic => isAdmin || topic.enabled !== false)
+    .map(topic => {
+      
+      // Calculate overall progress based on strictly visible questions
+      const visibleOriginalQuestions = topic.questions.filter(q => isAdmin || q.enabled !== false)
+      totalQuestionsCount += visibleOriginalQuestions.length
+      
+      visibleOriginalQuestions.forEach(q => {
+        if (solvedIds.has(q.id)) {
+          totalSolvedCount++
         }
+      })
+
+      if (topicFilter !== "All" && topic.id !== topicFilter) {
+        return { ...topic, questions: [], matchedQuestionsCount: 0 }
       }
 
-      return true
+      const filteredQuestions = topic.questions.filter(q => {
+        // Enforce Question Visibility for normal users
+        if (!isAdmin && q.enabled === false) return false
+
+        const globalId = q.id
+        const isSolved = solvedIds.has(globalId)
+        const isBookmarked = bookmarkedIds.has(globalId)
+
+        // Difficulty
+        if (difficultyFilter !== "All" && q.difficulty !== difficultyFilter) return false
+        // Status
+        if (statusFilter === "Solved" && !isSolved) return false
+        if (statusFilter === "Unsolved" && isSolved) return false
+        // Bookmark
+        if (bookmarkFilter === "Bookmarked" && !isBookmarked) return false
+        // Search
+        if (searchQuery) {
+          const query = searchQuery.toLowerCase()
+          if (!q.title.toLowerCase().includes(query) && !q.questionId.toLowerCase().includes(query)) {
+            return false
+          }
+        }
+
+        return true
+      })
+
+      return { ...topic, questions: filteredQuestions, matchedQuestionsCount: filteredQuestions.length }
     })
+    .filter(topic => topic.matchedQuestionsCount > 0) // Hide topics with 0 matches
 
-    return { ...topic, questions: filteredQuestions, matchedQuestionsCount: filteredQuestions.length }
-  }).filter(topic => topic.matchedQuestionsCount > 0) // Hide topics with 0 matches
-
-  const totalSolvedCount = solvedIds.size
   const overallPercentage = totalQuestionsCount > 0 ? (totalSolvedCount / totalQuestionsCount) * 100 : 0
 
   return (
@@ -267,7 +288,9 @@ export default function SheetPage() {
           className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <option value="All">All Topics</option>
-          {topics.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+          {topics.filter(t => isAdmin || t.enabled !== false).map(t => (
+            <option key={t.id} value={t.id}>{t.title}</option>
+          ))}
         </select>
 
         <select 
@@ -310,11 +333,11 @@ export default function SheetPage() {
 
       {/* Main Sheet */}
       <div className="space-y-4">
-        {topics.length === 0 ? (
+        {topics.filter(t => isAdmin || t.enabled !== false).length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
             <h3 className="mt-4 text-lg font-semibold">Sheet is empty</h3>
             <p className="mb-4 mt-2 text-sm text-muted-foreground">
-              No topics or questions found in the database.
+              No topics or questions available.
             </p>
           </div>
         ) : filteredTopics.length === 0 ? (
@@ -329,10 +352,11 @@ export default function SheetPage() {
           </div>
         ) : (
           filteredTopics.map((topic) => {
-            // Find original topic to calculate real progress (solved out of total available in that topic)
+            // Find original topic to calculate real progress (solved out of total visible in that topic)
             const originalTopic = topics.find(t => t.id === topic.id)!
-            const originalTotal = originalTopic.questions.length
-            const originalSolved = originalTopic.questions.filter(q => solvedIds.has(q.id)).length
+            const visibleOriginalQuestions = originalTopic.questions.filter(q => isAdmin || q.enabled !== false)
+            const originalTotal = visibleOriginalQuestions.length
+            const originalSolved = visibleOriginalQuestions.filter(q => solvedIds.has(q.id)).length
 
             return (
               <TopicDrawer 

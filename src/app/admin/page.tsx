@@ -3,9 +3,9 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/firebase/auth-context"
-import { Loader2, Plus, Edit2, Trash2, CheckCircle2, AlertCircle } from "lucide-react"
+import { Loader2, Plus, Edit2, Trash2, CheckCircle2, AlertCircle, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { fetchSheetData } from "@/lib/firestore/api"
+import { subscribeToSheetData } from "@/lib/firestore/api"
 import { AppTopic, AppQuestion } from "@/types"
 import { 
   createTopic, 
@@ -17,6 +17,41 @@ import {
 } from "@/lib/firestore/admin"
 
 type AdminTab = "topics" | "questions"
+
+function AdminToggle({ 
+  checked, 
+  onChange, 
+  ariaLabel 
+}: { 
+  checked: boolean, 
+  onChange: () => void, 
+  ariaLabel: string 
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      onClick={onChange}
+      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+        checked ? "bg-emerald-500" : "bg-muted"
+      }`}
+    >
+      <span
+        className={`pointer-events-none flex h-4 w-4 items-center justify-center rounded-full bg-background shadow-lg ring-0 transition-transform ${
+          checked ? "translate-x-4" : "translate-x-0"
+        }`}
+      >
+        {checked ? (
+          <CheckCircle2 className="h-2.5 w-2.5 text-emerald-500" />
+        ) : (
+          <X className="h-2.5 w-2.5 text-muted-foreground" />
+        )}
+      </span>
+    </button>
+  )
+}
 
 export default function AdminPage() {
   const { user, loading, isAdmin } = useAuth()
@@ -35,28 +70,28 @@ export default function AdminPage() {
   const [editingQuestion, setEditingQuestion] = React.useState<AppQuestion | null>(null)
   const [isQuestionFormOpen, setIsQuestionFormOpen] = React.useState(false)
 
-  const loadData = React.useCallback(async () => {
-    try {
-      setIsLoadingData(true)
-      const data = await fetchSheetData()
-      setTopics(data)
-    } catch (err) {
-      console.error("Failed to load admin data:", err)
-      setError("Failed to load data.")
-    } finally {
-      setIsLoadingData(false)
-    }
-  }, [])
-
   React.useEffect(() => {
     if (!loading) {
       if (!user || !isAdmin) {
         router.push("/")
-      } else {
-        loadData()
+        return
       }
+      
+      setIsLoadingData(true)
+      const unsubscribe = subscribeToSheetData(
+        (data) => {
+          setTopics(data)
+          setIsLoadingData(false)
+        },
+        (err) => {
+          console.error("Failed to load admin data:", err)
+          setError("Failed to load data.")
+          setIsLoadingData(false)
+        }
+      )
+      return () => unsubscribe()
     }
-  }, [loading, user, isAdmin, router, loadData])
+  }, [loading, user, isAdmin, router])
 
   React.useEffect(() => {
     if (successMsg) {
@@ -75,6 +110,24 @@ export default function AdminPage() {
 
   if (!user || !isAdmin) {
     return null // Will redirect
+  }
+
+  const handleToggleTopic = async (topicId: string, newState: boolean) => {
+    try {
+      await updateTopic(topicId, { enabled: newState })
+    } catch (err) {
+      console.error(err)
+      setError("Failed to update topic visibility.")
+    }
+  }
+
+  const handleToggleQuestion = async (globalId: string, field: 'enabled' | 'solutionEnabled', newState: boolean) => {
+    try {
+      await updateQuestion(globalId, { [field]: newState })
+    } catch (err) {
+      console.error(err)
+      setError("Failed to update question visibility.")
+    }
   }
 
   const handleTopicSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -100,12 +153,12 @@ export default function AdminPage() {
           setError("A topic with this name already exists.")
           return
         }
-        await createTopic(slug, name, description, order)
+        const enabled = formData.get("enabled") === "on"
+        await createTopic(slug, name, description, order, enabled)
         setSuccessMsg("Topic created.")
       }
       setIsTopicFormOpen(false)
       setEditingTopic(null)
-      loadData()
     } catch (err) {
       console.error(err)
       setError("Failed to save topic.")
@@ -122,7 +175,6 @@ export default function AdminPage() {
       try {
         await deleteTopic(topicId)
         setSuccessMsg("Topic deleted.")
-        loadData()
       } catch (err) {
         console.error(err)
         setError("Failed to delete topic.")
@@ -172,15 +224,17 @@ export default function AdminPage() {
         setSuccessMsg("Question updated.")
       } else {
         const globalId = `${topicId}-${questionId.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`
+        const enabled = formData.get("enabled") === "on"
+        const solutionEnabled = formData.get("solutionEnabled") === "on"
         await createQuestion(globalId, {
           topicId, questionId, title, difficulty, order,
-          leetcodeUrl, gfgUrl, codechefUrl, solution: solution || undefined
+          leetcodeUrl, gfgUrl, codechefUrl, solution: solution || undefined,
+          enabled, solutionEnabled
         })
         setSuccessMsg("Question created.")
       }
       setIsQuestionFormOpen(false)
       setEditingQuestion(null)
-      loadData()
     } catch (err) {
       console.error(err)
       setError("Failed to save question.")
@@ -192,7 +246,6 @@ export default function AdminPage() {
       try {
         await deleteQuestion(globalId)
         setSuccessMsg("Question deleted.")
-        loadData()
       } catch (err) {
         console.error(err)
         setError("Failed to delete question.")
@@ -256,28 +309,42 @@ export default function AdminPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/50 text-left">
-                  <th className="p-4 font-medium">Order</th>
-                  <th className="p-4 font-medium">ID (Slug)</th>
+                  <th className="p-4 font-medium w-20">Order</th>
+                  <th className="p-4 font-medium w-40">ID (Slug)</th>
                   <th className="p-4 font-medium">Name</th>
-                  <th className="p-4 font-medium text-right">Actions</th>
+                  <th className="p-4 font-medium text-center w-32">Visibility</th>
+                  <th className="p-4 font-medium text-right w-32">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {topics.sort((a,b) => a.order - b.order).map(t => (
-                  <tr key={t.id} className="border-b">
-                    <td className="p-4">{t.order}</td>
-                    <td className="p-4 font-mono text-xs">{t.id}</td>
-                    <td className="p-4 font-semibold">{t.title}</td>
-                    <td className="p-4 text-right space-x-2">
-                      <Button variant="secondary" size="sm" onClick={() => { setEditingTopic(t); setIsTopicFormOpen(true); }}>
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      <Button variant="destructive" size="sm" onClick={() => handleDeleteTopic(t.id)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                {topics.sort((a,b) => a.order - b.order).map(t => {
+                  const isEnabled = t.enabled !== false;
+                  return (
+                    <tr key={t.id} className="border-b">
+                      <td className="p-4">{t.order}</td>
+                      <td className="p-4 font-mono text-xs">{t.id}</td>
+                      <td className="p-4 font-semibold">{t.title}</td>
+                      <td className="p-4 text-center">
+                        <div className="flex flex-col items-center gap-1">
+                          <AdminToggle 
+                            checked={isEnabled} 
+                            onChange={() => handleToggleTopic(t.id, !isEnabled)} 
+                            ariaLabel={`Toggle visibility for ${t.title}`} 
+                          />
+                          <span className="text-[10px] font-medium text-muted-foreground uppercase">{isEnabled ? 'ON' : 'OFF'}</span>
+                        </div>
+                      </td>
+                      <td className="p-4 text-right space-x-2">
+                        <Button variant="secondary" size="sm" onClick={() => { setEditingTopic(t); setIsTopicFormOpen(true); }}>
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                        <Button variant="destructive" size="sm" onClick={() => handleDeleteTopic(t.id)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -301,6 +368,22 @@ export default function AdminPage() {
               <label className="text-sm font-medium mb-1 block">Order</label>
               <input name="order" type="number" defaultValue={editingTopic?.order || topics.length + 1} required className="w-full rounded-md border p-2 bg-background" />
             </div>
+            
+            {!editingTopic && (
+              <div>
+                <label className="text-sm font-medium mb-1 block">Visibility</label>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox" 
+                    name="enabled" 
+                    defaultChecked={true}
+                    className="h-4 w-4"
+                  />
+                  <span className="text-sm text-muted-foreground">Topic Enabled</span>
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-2 pt-4">
               <Button type="submit">Save Topic</Button>
               <Button type="button" variant="secondary" onClick={() => setIsTopicFormOpen(false)}>Cancel</Button>
@@ -321,39 +404,66 @@ export default function AdminPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/50 text-left">
-                  <th className="p-4 font-medium">Topic</th>
-                  <th className="p-4 font-medium">Order</th>
-                  <th className="p-4 font-medium">Disp ID</th>
+                  <th className="p-4 font-medium w-32">Topic</th>
+                  <th className="p-4 font-medium w-16">Order</th>
+                  <th className="p-4 font-medium w-24">Disp ID</th>
                   <th className="p-4 font-medium">Title</th>
-                  <th className="p-4 font-medium">Solution</th>
-                  <th className="p-4 font-medium text-right">Actions</th>
+                  <th className="p-4 font-medium text-center w-28">Question</th>
+                  <th className="p-4 font-medium text-center w-28">Solution</th>
+                  <th className="p-4 font-medium text-right w-32">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {topics.map(t => 
-                  t.questions.sort((a,b) => a.order - b.order).map(q => (
-                    <tr key={q.id} className="border-b">
-                      <td className="p-4 text-xs font-mono">{t.title}</td>
-                      <td className="p-4">{q.order}</td>
-                      <td className="p-4 font-mono text-xs">{q.questionId}</td>
-                      <td className="p-4">{q.title}</td>
-                      <td className="p-4">
-                        {q.solution && (q.solution.explanationMarkdown || q.solution.cppCode || q.solution.javaCode) ? (
-                          <span className="inline-flex items-center rounded-full bg-brand/10 px-2.5 py-0.5 text-xs font-semibold text-brand">Available</span>
-                        ) : (
-                          <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">Not added</span>
-                        )}
-                      </td>
-                      <td className="p-4 text-right space-x-2">
-                        <Button variant="secondary" size="sm" onClick={() => { setEditingQuestion(q); setIsQuestionFormOpen(true); }}>
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                        <Button variant="destructive" size="sm" onClick={() => handleDeleteQuestion(q.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))
+                  t.questions.sort((a,b) => a.order - b.order).map(q => {
+                    const isQuestionEnabled = q.enabled !== false;
+                    const isSolutionEnabled = q.solutionEnabled !== false;
+                    return (
+                      <tr key={q.id} className="border-b">
+                        <td className="p-4 text-xs font-mono">{t.title}</td>
+                        <td className="p-4">{q.order}</td>
+                        <td className="p-4 font-mono text-xs">{q.questionId}</td>
+                        <td className="p-4">
+                          <div className="font-medium">{q.title}</div>
+                          <div className="mt-1 flex gap-2">
+                            {q.solution && (q.solution.explanationMarkdown || q.solution.cppCode || q.solution.javaCode) ? (
+                              <span className="inline-flex items-center rounded-full bg-brand/10 px-2 py-0.5 text-[10px] font-semibold text-brand">Sol: Available</span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">Sol: Missing</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-4 text-center">
+                          <div className="flex flex-col items-center gap-1">
+                            <AdminToggle 
+                              checked={isQuestionEnabled} 
+                              onChange={() => handleToggleQuestion(q.id, 'enabled', !isQuestionEnabled)} 
+                              ariaLabel={`Toggle question visibility for ${q.title}`} 
+                            />
+                            <span className="text-[10px] font-medium text-muted-foreground uppercase">{isQuestionEnabled ? 'ON' : 'OFF'}</span>
+                          </div>
+                        </td>
+                        <td className="p-4 text-center">
+                          <div className="flex flex-col items-center gap-1">
+                            <AdminToggle 
+                              checked={isSolutionEnabled} 
+                              onChange={() => handleToggleQuestion(q.id, 'solutionEnabled', !isSolutionEnabled)} 
+                              ariaLabel={`Toggle solution visibility for ${q.title}`} 
+                            />
+                            <span className="text-[10px] font-medium text-muted-foreground uppercase">{isSolutionEnabled ? 'ON' : 'OFF'}</span>
+                          </div>
+                        </td>
+                        <td className="p-4 text-right space-x-2">
+                          <Button variant="secondary" size="sm" onClick={() => { setEditingQuestion(q); setIsQuestionFormOpen(true); }}>
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button variant="destructive" size="sm" onClick={() => handleDeleteQuestion(q.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </td>
+                      </tr>
+                    )
+                  })
                 )}
               </tbody>
             </table>
@@ -393,6 +503,32 @@ export default function AdminPage() {
                 <label className="text-sm font-medium mb-1 block">Order</label>
                 <input name="order" type="number" defaultValue={editingQuestion?.order || 1} required className="w-full rounded-md border p-2 bg-background" />
               </div>
+              
+              {!editingQuestion && (
+                <div className="col-span-2">
+                  <label className="text-sm font-medium mb-1 block">Visibility Controls</label>
+                  <div className="flex gap-6">
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="checkbox" 
+                        name="enabled" 
+                        defaultChecked={true}
+                        className="h-4 w-4"
+                      />
+                      <span className="text-sm text-muted-foreground">Question Enabled</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="checkbox" 
+                        name="solutionEnabled" 
+                        defaultChecked={true}
+                        className="h-4 w-4"
+                      />
+                      <span className="text-sm text-muted-foreground">Solution Enabled</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="pt-4 border-t space-y-4">

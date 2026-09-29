@@ -10,13 +10,13 @@ import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism"
 import { ArrowLeft, Check, Copy, Loader2, AlertCircle } from "lucide-react"
 
 import { useAuth } from "@/lib/firebase/auth-context"
-import { getQuestionById } from "@/lib/firestore/api"
+import { subscribeToQuestion } from "@/lib/firestore/api"
 import { AppQuestion } from "@/types"
 import { DifficultyBadge } from "@/components/dsa/difficulty-badge"
 import { Button } from "@/components/ui/button"
 
 export default function SolutionPage() {
-  const { user, loading } = useAuth()
+  const { user, loading, isAdmin } = useAuth()
   const router = useRouter()
   const params = useParams()
   
@@ -36,15 +36,14 @@ export default function SolutionPage() {
   }, [loading, user, router])
 
   React.useEffect(() => {
-    async function fetchQuestion() {
-      if (!questionId) return
-      
-      try {
-        setIsLoading(true)
-        const data = await getQuestionById(questionId)
+    if (!questionId || !user) return
+    
+    setIsLoading(true)
+    const unsubscribe = subscribeToQuestion(
+      questionId,
+      (data) => {
         if (data) {
           setQuestion(data)
-          // Set default tab based on availability
           if (data.solution) {
             if (data.solution.cppCode && !data.solution.javaCode) {
               setActiveTab("cpp")
@@ -55,17 +54,16 @@ export default function SolutionPage() {
         } else {
           setError("Question not found")
         }
-      } catch (err) {
+        setIsLoading(false)
+      },
+      (err) => {
         console.error(err)
         setError("Unable to load this solution. Please try again.")
-      } finally {
         setIsLoading(false)
       }
-    }
+    )
     
-    if (user) {
-      fetchQuestion()
-    }
+    return () => unsubscribe()
   }, [questionId, user])
 
   const handleCopy = async () => {
@@ -108,10 +106,28 @@ export default function SolutionPage() {
 
   if (!question) return null
 
+  // Visibility Guard
+  if (!isAdmin && question.enabled === false) {
+    return (
+      <div className="mx-auto max-w-4xl pt-8 space-y-6">
+        <div className="flex items-center gap-2 text-destructive bg-destructive/10 border border-destructive/20 p-4 rounded-md">
+          <AlertCircle className="h-5 w-5" />
+          <p>This question is currently unavailable.</p>
+        </div>
+        <Link href="/sheet" className="text-sm font-medium text-muted-foreground hover:text-foreground inline-flex items-center gap-2">
+          <ArrowLeft className="h-4 w-4" /> Back to Sheet
+        </Link>
+      </div>
+    )
+  }
+
+  const isSolutionAvailable = isAdmin || question.solutionEnabled !== false
   const sol = question.solution
-  const hasSolution = sol && (sol.explanationMarkdown || sol.timeComplexity || sol.spaceComplexity || sol.cppCode || sol.javaCode)
-  const hasComplexity = sol && (sol.timeComplexity || sol.spaceComplexity)
-  const hasCode = sol && (sol.cppCode || sol.javaCode)
+  const hasSolutionContent = sol && (sol.explanationMarkdown || sol.timeComplexity || sol.spaceComplexity || sol.cppCode || sol.javaCode)
+  
+  const hasSolution = isSolutionAvailable && hasSolutionContent
+  const hasComplexity = isSolutionAvailable && sol && (sol.timeComplexity || sol.spaceComplexity)
+  const hasCode = isSolutionAvailable && sol && (sol.cppCode || sol.javaCode)
 
   return (
     <div className="mx-auto max-w-4xl pb-24 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -136,11 +152,17 @@ export default function SolutionPage() {
         </div>
       </div>
 
-      {/* Empty State */}
+      {/* Empty / Unavailable State */}
       {!hasSolution && (
         <div className="py-12 text-center space-y-4 border rounded-lg bg-card/50">
-          <h2 className="text-xl font-semibold">Solution not available yet.</h2>
-          <p className="text-muted-foreground">This question does not have a published solution.</p>
+          <h2 className="text-xl font-semibold">
+            {!isSolutionAvailable ? "Solution unavailable." : "Solution not available yet."}
+          </h2>
+          <p className="text-muted-foreground">
+            {!isSolutionAvailable 
+              ? "The solution for this question is currently hidden."
+              : "This question does not have a published solution."}
+          </p>
         </div>
       )}
 

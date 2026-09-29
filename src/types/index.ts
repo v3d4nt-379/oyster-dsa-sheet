@@ -14,6 +14,8 @@ export interface AppQuestion {
   links: PracticeLinkData[]
   order: number
   solution?: QuestionSolution
+  enabled?: boolean
+  solutionEnabled?: boolean
 }
 
 export type QuestionSolution = {
@@ -30,6 +32,7 @@ export interface AppTopic {
   description?: string
   order: number
   questions: AppQuestion[]
+  enabled?: boolean
 }
 
 export interface UserProfile {

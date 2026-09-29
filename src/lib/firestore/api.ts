@@ -1,6 +1,34 @@
-import { collection, getDocs, query, orderBy, doc, getDoc } from "firebase/firestore"
+import { collection, getDocs, query, orderBy, doc, getDoc, onSnapshot } from "firebase/firestore"
 import { db } from "../firebase/firestore"
 import { AppTopic, AppQuestion, PracticeLinkData } from "@/types"
+
+function mapQuestionData(docId: string, data: any): AppQuestion {
+  const links: PracticeLinkData[] = []
+  
+  if (data.leetcodeUrl) links.push({ platform: "LeetCode", url: data.leetcodeUrl })
+  if (data.gfgUrl) links.push({ platform: "GeeksforGeeks", url: data.gfgUrl })
+  if (data.codechefUrl) links.push({ platform: "CodeChef", url: data.codechefUrl })
+
+  let parsedSolution = data.solution
+  
+  // Backward compatibility: If an old `solutionMarkdown` field exists and no new `solution` object is set, adapt it.
+  if (!parsedSolution && data.solutionMarkdown) {
+    parsedSolution = { explanationMarkdown: data.solutionMarkdown }
+  }
+
+  return {
+    id: docId,
+    questionId: data.questionId,
+    title: data.title,
+    topicId: data.topicId,
+    difficulty: data.difficulty,
+    links,
+    order: data.order,
+    solution: parsedSolution || undefined,
+    enabled: data.enabled,
+    solutionEnabled: data.solutionEnabled
+  }
+}
 
 export async function fetchSheetData(): Promise<AppTopic[]> {
   if (!db) throw new Error("Firestore is not initialized (Missing config)")
@@ -20,38 +48,13 @@ export async function fetchSheetData(): Promise<AppTopic[]> {
       title: data.name,
       description: data.description,
       order: data.order,
-      questions: []
+      questions: [],
+      enabled: data.enabled
     }
   })
 
   questionsSnapshot.docs.forEach(doc => {
-    const data = doc.data()
-    const links: PracticeLinkData[] = []
-    
-    if (data.leetcodeUrl) links.push({ platform: "LeetCode", url: data.leetcodeUrl })
-    if (data.gfgUrl) links.push({ platform: "GeeksforGeeks", url: data.gfgUrl })
-    if (data.codechefUrl) links.push({ platform: "CodeChef", url: data.codechefUrl })
-
-    let parsedSolution = data.solution
-    
-    // Backward compatibility: If an old `solutionMarkdown` field exists and no new `solution` object is set, adapt it.
-    if (!parsedSolution && data.solutionMarkdown) {
-      parsedSolution = {
-        explanationMarkdown: data.solutionMarkdown
-      }
-    }
-
-    const question: AppQuestion = {
-      id: doc.id,
-      questionId: data.questionId,
-      title: data.title,
-      topicId: data.topicId,
-      difficulty: data.difficulty,
-      links,
-      order: data.order,
-      solution: parsedSolution || undefined
-    }
-
+    const question = mapQuestionData(doc.id, doc.data())
     if (topicsMap[question.topicId]) {
       topicsMap[question.topicId].questions.push(question)
     } else {
@@ -71,26 +74,97 @@ export async function getQuestionById(questionId: string): Promise<AppQuestion |
   
   if (!docSnap.exists()) return null
   
-  const data = docSnap.data()
-  const links: PracticeLinkData[] = []
-  
-  if (data.leetcodeUrl) links.push({ platform: "LeetCode", url: data.leetcodeUrl })
-  if (data.gfgUrl) links.push({ platform: "GeeksforGeeks", url: data.gfgUrl })
-  if (data.codechefUrl) links.push({ platform: "CodeChef", url: data.codechefUrl })
-  
-  let parsedSolution = data.solution
-  if (!parsedSolution && data.solutionMarkdown) {
-    parsedSolution = { explanationMarkdown: data.solutionMarkdown }
+  return mapQuestionData(docSnap.id, docSnap.data())
+}
+
+export function subscribeToSheetData(
+  onData: (topics: AppTopic[]) => void,
+  onError: (error: Error) => void
+): () => void {
+  if (!db) {
+    onError(new Error("Firestore is not initialized (Missing config)"))
+    return () => {}
   }
-  
-  return {
-    id: docSnap.id,
-    questionId: data.questionId,
-    title: data.title,
-    topicId: data.topicId,
-    difficulty: data.difficulty,
-    links,
-    order: data.order,
-    solution: parsedSolution || undefined
+
+  let topicsData: any[] = []
+  let questionsData: any[] = []
+  let topicsLoaded = false
+  let questionsLoaded = false
+
+  const emit = () => {
+    if (!topicsLoaded || !questionsLoaded) return
+
+    const topicsMap: Record<string, AppTopic> = {}
+    
+    topicsData.forEach(t => {
+      topicsMap[t.id] = {
+        id: t.id,
+        title: t.data.name,
+        description: t.data.description,
+        order: t.data.order,
+        questions: [],
+        enabled: t.data.enabled
+      }
+    })
+
+    questionsData.forEach(q => {
+      const question = mapQuestionData(q.id, q.data)
+      if (topicsMap[question.topicId]) {
+        topicsMap[question.topicId].questions.push(question)
+      } else {
+        console.warn(`Question ${question.id} references missing topic ${question.topicId}`)
+      }
+    })
+
+    onData(Object.values(topicsMap).sort((a, b) => a.order - b.order))
   }
+
+  const unsubTopics = onSnapshot(
+    query(collection(db, "topics"), orderBy("order", "asc")),
+    (snapshot) => {
+      topicsData = snapshot.docs.map(d => ({ id: d.id, data: d.data() }))
+      topicsLoaded = true
+      emit()
+    },
+    (err) => onError(err)
+  )
+
+  const unsubQuestions = onSnapshot(
+    query(collection(db, "questions"), orderBy("order", "asc")),
+    (snapshot) => {
+      questionsData = snapshot.docs.map(d => ({ id: d.id, data: d.data() }))
+      questionsLoaded = true
+      emit()
+    },
+    (err) => onError(err)
+  )
+
+  return () => {
+    unsubTopics()
+    unsubQuestions()
+  }
+}
+
+export function subscribeToQuestion(
+  questionId: string,
+  onData: (question: AppQuestion | null) => void,
+  onError: (error: Error) => void
+): () => void {
+  if (!db) {
+    onError(new Error("Firestore is not initialized"))
+    return () => {}
+  }
+
+  const docRef = doc(db, "questions", questionId)
+  return onSnapshot(
+    docRef,
+    (docSnap) => {
+      if (!docSnap.exists()) {
+        onData(null)
+      } else {
+        onData(mapQuestionData(docSnap.id, docSnap.data()))
+      }
+    },
+    (err) => onError(err)
+  )
 }

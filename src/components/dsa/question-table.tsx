@@ -5,6 +5,7 @@ import { PracticeLink } from "@/components/dsa/practice-link"
 import { BookmarkButton } from "@/components/dsa/bookmark-button"
 import { Button } from "@/components/ui/button"
 import { AppQuestion } from "@/types"
+import { useAuth } from "@/lib/firebase/auth-context"
 import Link from "next/link"
 
 export interface QuestionTableProps {
@@ -24,6 +25,8 @@ export function QuestionTable({
   onToggleSolved,
   onToggleBookmark
 }: QuestionTableProps) {
+  const { isAdmin } = useAuth()
+
   return (
     <div className="w-full overflow-x-auto">
       <table className="w-full text-sm min-w-[700px]">
@@ -40,9 +43,10 @@ export function QuestionTable({
         </thead>
         <tbody className="[&_tr:last-child]:border-0">
           {questions.map((q) => {
-            const globalId = q.id // q.id is now the globally unique document ID
+            const globalId = q.id
             const isSolved = solvedIds.has(globalId)
             const isBookmarked = bookmarkedIds.has(globalId)
+            const isSolutionHidden = !isAdmin && q.solutionEnabled === false
 
             return (
               <tr key={q.id} className="border-b transition-colors hover:bg-muted/50">
@@ -69,11 +73,17 @@ export function QuestionTable({
                   <DifficultyBadge difficulty={q.difficulty} />
                 </td>
                 <td className="p-4 align-middle shrink-0">
-                  <Link href={`/sheet/question/${globalId}/solution`}>
-                    <Button variant="tertiary" size="sm" className="h-8 text-xs font-medium px-3">
-                      Solution
+                  {isSolutionHidden ? (
+                    <Button variant="tertiary" size="sm" disabled className="h-8 text-xs font-medium px-3 opacity-50 cursor-not-allowed">
+                      Unavailable
                     </Button>
-                  </Link>
+                  ) : (
+                    <Link href={`/sheet/question/${globalId}/solution`}>
+                      <Button variant="tertiary" size="sm" className="h-8 text-xs font-medium px-3">
+                        Solution
+                      </Button>
+                    </Link>
+                  )}
                 </td>
                 <td className="p-4 align-middle text-center shrink-0">
                   <BookmarkButton 
