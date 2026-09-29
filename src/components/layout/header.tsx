@@ -54,7 +54,7 @@ export function Header() {
                 {user.photoURL ? (
                   <img src={user.photoURL} alt="Avatar" className="h-full w-full object-cover" />
                 ) : (
-                  <UserCircle className="h-5 w-5" />
+                  user.displayName ? user.displayName.charAt(0).toUpperCase() : <UserCircle className="h-5 w-5" />
                 )}
               </Button>
               

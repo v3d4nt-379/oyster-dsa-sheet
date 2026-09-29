@@ -74,10 +74,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setError(null)
       const provider = new GoogleAuthProvider()
       await signInWithPopup(auth, provider)
-    } catch (err: any) {
-      if (err.code === "auth/popup-closed-by-user") {
+    } catch (err: unknown) {
+      const authErr = err as { code?: string }
+      if (authErr.code === "auth/popup-closed-by-user") {
         setError("Google sign-in was cancelled.")
-      } else if (err.code === "auth/popup-blocked") {
+      } else if (authErr.code === "auth/popup-blocked") {
         setError("Popup was blocked. Please allow popups and try again.")
       } else {
         setError("Unable to sign you in right now. Please try again.")

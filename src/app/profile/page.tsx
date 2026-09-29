@@ -127,7 +127,7 @@ export default function ProfilePage() {
           {user.photoURL ? (
             <img src={user.photoURL} alt={user.displayName || "User"} className="h-full w-full object-cover" />
           ) : (
-            user.displayName ? user.displayName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : <UserCircle className="h-12 w-12" />
+            user.displayName ? user.displayName.charAt(0).toUpperCase() : <UserCircle className="h-12 w-12" />
           )}
         </div>
         
