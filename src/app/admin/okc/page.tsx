@@ -1,0 +1,734 @@
+"use client"
+
+import * as React from "react"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/lib/firebase/auth-context"
+import { Loader2, Plus, Edit2, Trash2, CheckCircle2, AlertCircle, X, Search } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { subscribeToOkcSheetData } from "@/lib/firestore/api"
+import { AppTopic, AppQuestion } from "@/types"
+import { 
+  createOkcQuestion, 
+  updateOkcQuestion, 
+  deleteOkcQuestion,
+  createOkcTopic,
+  updateOkcTopic,
+  deleteOkcTopic,
+  getAllDailySets
+} from "@/lib/firestore/admin"
+
+type AdminTab = "topics" | "questions"
+
+function AdminToggle({ 
+  checked, 
+  onChange, 
+  ariaLabel 
+}: { 
+  checked: boolean, 
+  onChange: () => void, 
+  ariaLabel: string 
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      onClick={onChange}
+      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+        checked ? "bg-emerald-500" : "bg-muted"
+      }`}
+    >
+      <span
+        className={`pointer-events-none flex h-4 w-4 items-center justify-center rounded-full bg-background shadow-lg ring-0 transition-transform ${
+          checked ? "translate-x-4" : "translate-x-0"
+        }`}
+      >
+        {checked ? (
+          <CheckCircle2 className="h-2.5 w-2.5 text-emerald-500" />
+        ) : (
+          <X className="h-2.5 w-2.5 text-muted-foreground" />
+        )}
+      </span>
+    </button>
+  )
+}
+
+export default function OkcAdminPage() {
+  const { user, loading, isAdmin } = useAuth()
+  const router = useRouter()
+  
+  const [activeTab, setActiveTab] = React.useState<AdminTab>("topics")
+  const [topics, setTopics] = React.useState<AppTopic[]>([])
+  const [isLoadingData, setIsLoadingData] = React.useState(true)
+  const [error, setError] = React.useState<string | null>(null)
+  const [successMsg, setSuccessMsg] = React.useState<string | null>(null)
+
+  // Topics Form State
+  const [editingTopic, setEditingTopic] = React.useState<AppTopic | null>(null)
+  const [isTopicFormOpen, setIsTopicFormOpen] = React.useState(false)
+
+  // Questions Form State
+  const [editingQuestion, setEditingQuestion] = React.useState<AppQuestion | null>(null)
+  const [isQuestionFormOpen, setIsQuestionFormOpen] = React.useState(false)
+
+  // Filters State
+  const [searchQuery, setSearchQuery] = React.useState("")
+  const [filterTopic, setFilterTopic] = React.useState("all")
+  const [filterDifficulty, setFilterDifficulty] = React.useState("all")
+  const [filterEnabled, setFilterEnabled] = React.useState("all")
+
+  React.useEffect(() => {
+    if (!loading) {
+      if (!user || !isAdmin) {
+        router.push("/")
+        return
+      }
+      
+      setIsLoadingData(true)
+      const unsubscribe = subscribeToOkcSheetData(
+        (data) => {
+          setTopics(data)
+          setIsLoadingData(false)
+        },
+        (err) => {
+          console.error("Failed to load admin data:", err)
+          setError("Failed to load data.")
+          setIsLoadingData(false)
+        }
+      )
+      return () => unsubscribe()
+    }
+  }, [loading, user, isAdmin, router])
+
+  React.useEffect(() => {
+    if (successMsg) {
+      const timer = setTimeout(() => setSuccessMsg(null), 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [successMsg])
+
+  if (loading || isLoadingData) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  if (!user || !isAdmin) {
+    return null // Will redirect
+  }
+
+  // --- Topics Handlers ---
+
+  const handleTopicSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setError(null)
+    const formData = new FormData(e.currentTarget)
+    const name = formData.get("name") as string
+    const description = formData.get("description") as string
+    const order = parseInt(formData.get("order") as string, 10)
+    
+    if (!name.trim() || isNaN(order)) {
+      setError("Name and Order are required.")
+      return
+    }
+
+    try {
+      if (editingTopic) {
+        await updateOkcTopic(editingTopic.id, { name, description, order })
+        setSuccessMsg("Topic updated.")
+      } else {
+        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)+/g, "")
+        if (topics.some(t => t.id === slug)) {
+          setError("A topic with this name already exists in OKC.")
+          return
+        }
+        const enabled = formData.get("enabled") === "on"
+        await createOkcTopic(slug, name, description, order, enabled)
+        setSuccessMsg("Topic created.")
+      }
+      setIsTopicFormOpen(false)
+      setEditingTopic(null)
+    } catch (err) {
+      console.error(err)
+      setError("Failed to save topic.")
+    }
+  }
+
+  const handleToggleTopic = async (topicId: string, newState: boolean) => {
+    try {
+      await updateOkcTopic(topicId, { enabled: newState })
+    } catch (err) {
+      console.error(err)
+      setError("Failed to update topic visibility.")
+    }
+  }
+
+  const handleDeleteTopic = async (topicId: string) => {
+    const topic = topics.find(t => t.id === topicId)
+    if (topic && topic.questions.length > 0) {
+      alert("This topic is used by one or more OKC questions and cannot be deleted until those questions are reassigned or removed.")
+      return
+    }
+    if (confirm("Are you sure you want to delete this topic?")) {
+      try {
+        await deleteOkcTopic(topicId)
+        setSuccessMsg("Topic deleted.")
+      } catch (err) {
+        console.error(err)
+        setError("Failed to delete topic.")
+      }
+    }
+  }
+
+  // --- Questions Handlers ---
+
+  const handleToggleQuestion = async (globalId: string, field: 'enabled' | 'solutionEnabled', newState: boolean) => {
+    try {
+      await updateOkcQuestion(globalId, { [field]: newState })
+    } catch (err) {
+      console.error(err)
+      setError("Failed to update question visibility.")
+    }
+  }
+
+  const handleQuestionSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setError(null)
+    const formData = new FormData(e.currentTarget)
+    const topicId = formData.get("topicId") as string
+    const questionId = formData.get("questionId") as string
+    const title = formData.get("title") as string
+    const difficulty = formData.get("difficulty") as string
+    const order = parseInt(formData.get("order") as string, 10)
+    const leetcodeUrl = (formData.get("leetcodeUrl") as string) || null
+    const gfgUrl = (formData.get("gfgUrl") as string) || null
+    const codechefUrl = (formData.get("codechefUrl") as string) || null
+    const explanationMarkdown = (formData.get("explanationMarkdown") as string) || ""
+    const timeComplexity = (formData.get("timeComplexity") as string) || ""
+    const spaceComplexity = (formData.get("spaceComplexity") as string) || ""
+    const cppCode = (formData.get("cppCode") as string) || ""
+    const javaCode = (formData.get("javaCode") as string) || ""
+
+    const hasSolution = explanationMarkdown.trim() || timeComplexity.trim() || spaceComplexity.trim() || cppCode.trim() || javaCode.trim()
+
+    const solution = hasSolution ? {
+      explanationMarkdown: explanationMarkdown.trim(),
+      timeComplexity: timeComplexity.trim(),
+      spaceComplexity: spaceComplexity.trim(),
+      cppCode: cppCode.trim(),
+      javaCode: javaCode.trim()
+    } : null
+
+    if (!topicId || !questionId.trim() || !title.trim() || !difficulty || isNaN(order)) {
+      setError("Topic, Question ID, Title, Difficulty, and Order are required.")
+      return
+    }
+
+    try {
+      if (editingQuestion) {
+        await updateOkcQuestion(editingQuestion.id, {
+          topicId, title, difficulty, order,
+          leetcodeUrl, gfgUrl, codechefUrl, solution
+        })
+        setSuccessMsg("Question updated.")
+      } else {
+        const globalId = `${topicId}-${questionId.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`
+        
+        // Check uniqueness in OKC only
+        const allQuestions = topics.flatMap(t => t.questions)
+        if (allQuestions.some(q => q.id === globalId)) {
+          setError("A question with this Question ID already exists in this Topic in the OKC collection.")
+          return
+        }
+
+        const enabled = formData.get("enabled") === "on"
+        const solutionEnabled = formData.get("solutionEnabled") === "on"
+        await createOkcQuestion(globalId, {
+          topicId, questionId, title, difficulty, order,
+          leetcodeUrl, gfgUrl, codechefUrl, solution: solution || undefined,
+          enabled, solutionEnabled
+        })
+        setSuccessMsg("Question created.")
+      }
+      setIsQuestionFormOpen(false)
+      setEditingQuestion(null)
+    } catch (err) {
+      console.error(err)
+      setError("Failed to save question.")
+    }
+  }
+
+  const handleDeleteQuestion = async (globalId: string) => {
+    if (confirm("Are you sure you want to delete this question?")) {
+      try {
+        const dailySets = await getAllDailySets()
+        const isReferenced = dailySets.some(set => set.questionIds.includes(globalId))
+        
+        if (isReferenced) {
+          setError("This question is used in one or more Daily Sets and cannot be deleted until those references are removed.")
+          return
+        }
+
+        await deleteOkcQuestion(globalId)
+        setSuccessMsg("Question deleted.")
+      } catch (err) {
+        console.error(err)
+        setError("Failed to delete question.")
+      }
+    }
+  }
+
+  const allQuestions = topics.flatMap(t => t.questions.map(q => ({ ...q, topicTitle: t.title })))
+  
+  const filteredQuestions = allQuestions.filter(q => {
+    if (searchQuery) {
+      const qTitle = q.title.toLowerCase()
+      const qId = q.questionId.toLowerCase()
+      const sq = searchQuery.toLowerCase()
+      if (!qTitle.includes(sq) && !qId.includes(sq)) return false
+    }
+    if (filterTopic !== "all" && q.topicId !== filterTopic) return false
+    if (filterDifficulty !== "all" && q.difficulty !== filterDifficulty) return false
+    if (filterEnabled !== "all") {
+      const isEnabled = q.enabled !== false
+      if (filterEnabled === "enabled" && !isEnabled) return false
+      if (filterEnabled === "disabled" && isEnabled) return false
+    }
+    return true
+  }).sort((a, b) => a.order - b.order)
+
+  return (
+    <div className="mx-auto max-w-6xl space-y-8 pb-12">
+      <div className="flex items-center justify-between border-b pb-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">OKC Data Management</h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            Manage club-exclusive topics and questions independently.
+          </p>
+        </div>
+      </div>
+
+      {successMsg && (
+        <div className="bg-brand/10 text-brand border border-brand/20 p-4 rounded-md flex items-center gap-2">
+          <CheckCircle2 className="h-5 w-5" />
+          {successMsg}
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-destructive/10 text-destructive border border-destructive/20 p-4 rounded-md flex items-center gap-2">
+          <AlertCircle className="h-5 w-5" />
+          {error}
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="flex gap-4 border-b">
+        <button 
+          className={`pb-2 px-1 text-sm font-medium ${activeTab === 'topics' ? 'border-b-2 border-primary text-foreground' : 'text-muted-foreground'}`}
+          onClick={() => setActiveTab('topics')}
+        >
+          Topics
+        </button>
+        <button 
+          className={`pb-2 px-1 text-sm font-medium ${activeTab === 'questions' ? 'border-b-2 border-primary text-foreground' : 'text-muted-foreground'}`}
+          onClick={() => setActiveTab('questions')}
+        >
+          Questions
+        </button>
+      </div>
+
+      {/* --- Topics View --- */}
+      {activeTab === 'topics' && !isTopicFormOpen && (
+        <div className="space-y-4">
+          <div className="flex justify-end">
+            <Button onClick={() => { setEditingTopic(null); setIsTopicFormOpen(true); }}>
+              <Plus className="h-4 w-4 mr-2" /> Add Topic
+            </Button>
+          </div>
+          <div className="rounded-md border bg-card text-card-foreground overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/50 text-left">
+                  <th className="p-4 font-medium w-20">Order</th>
+                  <th className="p-4 font-medium w-40">ID (Slug)</th>
+                  <th className="p-4 font-medium">Name</th>
+                  <th className="p-4 font-medium text-center w-32">Visibility</th>
+                  <th className="p-4 font-medium text-right w-32">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topics.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="p-8 text-center text-muted-foreground">
+                      No OKC topics found.
+                    </td>
+                  </tr>
+                ) : (
+                  topics.sort((a,b) => a.order - b.order).map(t => {
+                    const isEnabled = t.enabled !== false;
+                    return (
+                      <tr key={t.id} className="border-b">
+                        <td className="p-4">{t.order}</td>
+                        <td className="p-4 font-mono text-xs text-muted-foreground">{t.id}</td>
+                        <td className="p-4">
+                          <div className="font-medium">{t.title}</div>
+                          <div className="text-xs text-muted-foreground mt-1 truncate max-w-[300px]">
+                            {t.description}
+                          </div>
+                        </td>
+                        <td className="p-4 text-center">
+                          <div className="flex flex-col items-center gap-1">
+                            <AdminToggle 
+                              checked={isEnabled} 
+                              onChange={() => handleToggleTopic(t.id, !isEnabled)} 
+                              ariaLabel={`Toggle visibility for ${t.title}`} 
+                            />
+                            <span className="text-[10px] font-medium text-muted-foreground uppercase">{isEnabled ? 'ON' : 'OFF'}</span>
+                          </div>
+                        </td>
+                        <td className="p-4 text-right">
+                          <Button variant="secondary" size="sm" onClick={() => { setEditingTopic(t); setIsTopicFormOpen(true); }} className="mr-2">
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button variant="destructive" size="sm" onClick={() => handleDeleteTopic(t.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Topics Form */}
+      {activeTab === 'topics' && isTopicFormOpen && (
+        <div className="rounded-md border bg-card p-6 max-w-xl">
+          <h2 className="text-xl font-bold mb-4">{editingTopic ? "Edit OKC Topic" : "Create OKC Topic"}</h2>
+          <form onSubmit={handleTopicSubmit} className="space-y-4">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Name</label>
+              <input name="name" defaultValue={editingTopic?.title} required className="w-full rounded-md border p-2 bg-background" />
+            </div>
+            {!editingTopic && (
+              <p className="text-xs text-muted-foreground">
+                The Topic ID (slug) will be automatically generated from the name.
+              </p>
+            )}
+            <div>
+              <label className="text-sm font-medium mb-1 block">Description</label>
+              <textarea name="description" defaultValue={editingTopic?.description} rows={3} className="w-full rounded-md border p-2 bg-background" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium mb-1 block">Order</label>
+                <input name="order" type="number" defaultValue={editingTopic?.order || topics.length + 1} required className="w-full rounded-md border p-2 bg-background" />
+              </div>
+              {!editingTopic && (
+                <div className="flex items-center gap-2 pt-6">
+                  <input type="checkbox" name="enabled" defaultChecked={true} className="h-4 w-4" />
+                  <span className="text-sm font-medium">Visible to Students</span>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2 pt-4">
+              <Button type="submit">Save Topic</Button>
+              <Button type="button" variant="secondary" onClick={() => setIsTopicFormOpen(false)}>Cancel</Button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* --- Questions View --- */}
+      {activeTab === 'questions' && !isQuestionFormOpen && (
+        <div className="space-y-4">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Search title or ID..."
+                  className="pl-9 pr-4 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary w-full md:w-64"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+              <select
+                value={filterTopic}
+                onChange={(e) => setFilterTopic(e.target.value)}
+                className="py-2 px-3 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                <option value="all">All Topics</option>
+                {topics.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+              </select>
+              <select
+                value={filterDifficulty}
+                onChange={(e) => setFilterDifficulty(e.target.value)}
+                className="py-2 px-3 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                <option value="all">All Difficulties</option>
+                <option value="Easy">Easy</option>
+                <option value="Medium">Medium</option>
+                <option value="Hard">Hard</option>
+              </select>
+              <select
+                value={filterEnabled}
+                onChange={(e) => setFilterEnabled(e.target.value)}
+                className="py-2 px-3 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                <option value="all">Any Status</option>
+                <option value="enabled">Enabled</option>
+                <option value="disabled">Disabled</option>
+              </select>
+            </div>
+            <Button onClick={() => { setEditingQuestion(null); setIsQuestionFormOpen(true); }}>
+              <Plus className="h-4 w-4 mr-2" /> Add Question
+            </Button>
+          </div>
+
+          <div className="rounded-md border bg-card text-card-foreground overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/50 text-left">
+                  <th className="p-4 font-medium w-32">Topic</th>
+                  <th className="p-4 font-medium w-16">Order</th>
+                  <th className="p-4 font-medium w-24">Disp ID</th>
+                  <th className="p-4 font-medium">Title</th>
+                  <th className="p-4 font-medium w-24">Difficulty</th>
+                  <th className="p-4 font-medium text-center w-28">Question</th>
+                  <th className="p-4 font-medium text-center w-28">Solution</th>
+                  <th className="p-4 font-medium text-right w-32">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredQuestions.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="p-8 text-center text-muted-foreground">
+                      No OKC questions found.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredQuestions.map(q => {
+                    const isQuestionEnabled = q.enabled !== false;
+                    const isSolutionEnabled = q.solutionEnabled !== false;
+                    return (
+                      <tr key={q.id} className="border-b">
+                        <td className="p-4 text-xs font-mono">{q.topicTitle}</td>
+                        <td className="p-4">{q.order}</td>
+                        <td className="p-4 font-mono text-xs">{q.questionId}</td>
+                        <td className="p-4">
+                          <div className="font-medium">{q.title}</div>
+                          <div className="mt-1 flex gap-2">
+                            {q.solution && (q.solution.explanationMarkdown || q.solution.cppCode || q.solution.javaCode) ? (
+                              <span className="inline-flex items-center rounded-full bg-brand/10 px-2 py-0.5 text-[10px] font-semibold text-brand">Sol: Available</span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">Sol: Missing</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <span className={`text-xs font-semibold ${q.difficulty === 'Easy' ? 'text-emerald-500' : q.difficulty === 'Medium' ? 'text-yellow-500' : 'text-red-500'}`}>
+                            {q.difficulty}
+                          </span>
+                        </td>
+                        <td className="p-4 text-center">
+                          <div className="flex flex-col items-center gap-1">
+                            <AdminToggle 
+                              checked={isQuestionEnabled} 
+                              onChange={() => handleToggleQuestion(q.id, 'enabled', !isQuestionEnabled)} 
+                              ariaLabel={`Toggle question visibility for ${q.title}`} 
+                            />
+                            <span className="text-[10px] font-medium text-muted-foreground uppercase">{isQuestionEnabled ? 'ON' : 'OFF'}</span>
+                          </div>
+                        </td>
+                        <td className="p-4 text-center">
+                          <div className="flex flex-col items-center gap-1">
+                            <AdminToggle 
+                              checked={isSolutionEnabled} 
+                              onChange={() => handleToggleQuestion(q.id, 'solutionEnabled', !isSolutionEnabled)} 
+                              ariaLabel={`Toggle solution visibility for ${q.title}`} 
+                            />
+                            <span className="text-[10px] font-medium text-muted-foreground uppercase">{isSolutionEnabled ? 'ON' : 'OFF'}</span>
+                          </div>
+                        </td>
+                        <td className="p-4 text-right">
+                          <Button variant="secondary" size="sm" onClick={() => { setEditingQuestion(q); setIsQuestionFormOpen(true); }} className="mr-2">
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button variant="destructive" size="sm" onClick={() => handleDeleteQuestion(q.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Questions Form */}
+      {activeTab === 'questions' && isQuestionFormOpen && (
+        <div className="rounded-md border bg-card p-6 max-w-3xl">
+          <h2 className="text-xl font-bold mb-4">{editingQuestion ? "Edit OKC Question" : "Create OKC Question"}</h2>
+          <form onSubmit={handleQuestionSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium mb-1 block">Topic</label>
+                <select name="topicId" defaultValue={editingQuestion?.topicId} required className="w-full rounded-md border p-2 bg-background">
+                  {topics.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1 block">Question ID (Display)</label>
+                <input 
+                  name="questionId" 
+                  defaultValue={editingQuestion?.questionId} 
+                  required 
+                  className="w-full rounded-md border p-2 bg-background disabled:opacity-50" 
+                  placeholder="e.g. Q1" 
+                  disabled={!!editingQuestion} // Immutable if editing
+                  title={editingQuestion ? "Question ID is immutable to preserve references in Daily Sets." : ""}
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="text-sm font-medium mb-1 block">Title</label>
+                <input name="title" defaultValue={editingQuestion?.title} required className="w-full rounded-md border p-2 bg-background" />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1 block">Difficulty</label>
+                <select name="difficulty" defaultValue={editingQuestion?.difficulty || "Easy"} required className="w-full rounded-md border p-2 bg-background">
+                  <option value="Easy">Easy</option>
+                  <option value="Medium">Medium</option>
+                  <option value="Hard">Hard</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1 block">Order</label>
+                <input name="order" type="number" defaultValue={editingQuestion?.order || 1} required className="w-full rounded-md border p-2 bg-background" />
+              </div>
+              
+              {!editingQuestion && (
+                <div className="col-span-2">
+                  <label className="text-sm font-medium mb-1 block">Visibility Controls</label>
+                  <div className="flex gap-6">
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="checkbox" 
+                        name="enabled" 
+                        defaultChecked={true}
+                        className="h-4 w-4"
+                      />
+                      <span className="text-sm text-muted-foreground">Question Enabled</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="checkbox" 
+                        name="solutionEnabled" 
+                        defaultChecked={true}
+                        className="h-4 w-4"
+                      />
+                      <span className="text-sm text-muted-foreground">Solution Enabled</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-4 border-t space-y-4">
+              <h3 className="font-semibold text-sm">Practice URLs (Optional)</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-medium mb-1 block text-muted-foreground">LeetCode</label>
+                  <input name="leetcodeUrl" defaultValue={editingQuestion?.links.find(l => l.platform === 'LeetCode')?.url || ""} className="w-full rounded-md border p-2 bg-background text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium mb-1 block text-muted-foreground">GeeksforGeeks</label>
+                  <input name="gfgUrl" defaultValue={editingQuestion?.links.find(l => l.platform === 'GeeksforGeeks')?.url || ""} className="w-full rounded-md border p-2 bg-background text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium mb-1 block text-muted-foreground">CodeChef</label>
+                  <input name="codechefUrl" defaultValue={editingQuestion?.links.find(l => l.platform === 'CodeChef')?.url || ""} className="w-full rounded-md border p-2 bg-background text-sm" />
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t space-y-4">
+              <h3 className="font-semibold text-sm">Solution</h3>
+              
+              <div>
+                <label className="text-xs font-medium mb-1 block text-muted-foreground">Explanation / Approach</label>
+                <textarea 
+                  name="explanationMarkdown" 
+                  defaultValue={editingQuestion?.solution?.explanationMarkdown || ""} 
+                  rows={4} 
+                  className="w-full rounded-md border p-3 bg-background font-mono text-sm"
+                  placeholder="Use Markdown for the explanation."
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-medium mb-1 block text-muted-foreground">Time Complexity</label>
+                  <input 
+                    name="timeComplexity" 
+                    defaultValue={editingQuestion?.solution?.timeComplexity || ""} 
+                    className="w-full rounded-md border p-2 bg-background text-sm" 
+                    placeholder="e.g. O(n)"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium mb-1 block text-muted-foreground">Space Complexity</label>
+                  <input 
+                    name="spaceComplexity" 
+                    defaultValue={editingQuestion?.solution?.spaceComplexity || ""} 
+                    className="w-full rounded-md border p-2 bg-background text-sm" 
+                    placeholder="e.g. O(1)"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium mb-1 block text-muted-foreground">C++ Code</label>
+                <textarea 
+                  name="cppCode" 
+                  defaultValue={editingQuestion?.solution?.cppCode || ""} 
+                  rows={6} 
+                  className="w-full rounded-md border p-3 bg-background font-mono text-sm"
+                  placeholder="Paste C++ source code only."
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium mb-1 block text-muted-foreground">Java Code</label>
+                <textarea 
+                  name="javaCode" 
+                  defaultValue={editingQuestion?.solution?.javaCode || ""} 
+                  rows={6} 
+                  className="w-full rounded-md border p-3 bg-background font-mono text-sm"
+                  placeholder="Paste Java source code only."
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-4">
+              <Button type="submit">Save Question</Button>
+              <Button type="button" variant="secondary" onClick={() => setIsQuestionFormOpen(false)}>Cancel</Button>
+            </div>
+          </form>
+        </div>
+      )}
+
+    </div>
+  )
+}

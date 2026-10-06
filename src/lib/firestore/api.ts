@@ -212,7 +212,7 @@ export function subscribeToOkcSheetData(
   }
 
   const unsubTopics = onSnapshot(
-    query(collection(db, "topics"), orderBy("order", "asc")),
+    query(collection(db, "okcTopics"), orderBy("order", "asc")),
     (snapshot) => {
       topicsData = snapshot.docs.map(d => ({ id: d.id, data: d.data() }))
       topicsLoaded = true
