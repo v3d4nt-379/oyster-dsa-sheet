@@ -1,38 +1,107 @@
 "use client"
 
 import * as React from "react"
-import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/firebase/auth-context"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Loader2 } from "lucide-react"
+import { Loader2, ArrowRight, Lock } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import Link from "next/link"
 
 export default function AuthPage() {
-  const { user, loading, signInWithGoogle, error } = useAuth()
-  const router = useRouter()
+  const { user, loading, isAdmin, isClubMember, signInWithGoogle, error } = useAuth()
   const [isSigningIn, setIsSigningIn] = React.useState(false)
-
-  React.useEffect(() => {
-    if (!loading && user) {
-      router.push("/sheet")
-    }
-  }, [user, loading, router])
 
   const handleSignIn = async () => {
     setIsSigningIn(true)
     try {
       await signInWithGoogle()
-      // Note: redirection is handled by the useEffect above
     } catch (e) {
       setIsSigningIn(false)
     }
   }
 
-  // Prevent flashing the auth page if we're still checking session or redirecting
-  if (loading || user) {
+  // Prevent flashing the auth page if we're still checking session
+  if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  if (user) {
+    return (
+      <div className="mx-auto max-w-5xl px-4 py-12 lg:py-24 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="mb-12">
+          <h1 className="text-4xl font-extrabold tracking-tight lg:text-5xl">
+            Welcome back{user.displayName ? `, ${user.displayName.split(' ')[0]}` : ''}!
+          </h1>
+          <p className="mt-4 text-xl text-muted-foreground">
+            Choose a track to continue your learning journey.
+          </p>
+        </div>
+
+        <div className="grid gap-8 md:grid-cols-2">
+          {/* Card 1: Marathon Sheet */}
+          <Link href="/sheet" className="group relative block overflow-hidden rounded-2xl border bg-card text-card-foreground shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl hover:border-primary/50 dark:hover:shadow-primary/25">
+            {/* Top Loading/Progress Bar */}
+            <div className="absolute left-0 top-0 h-1.5 w-full">
+               <div className="h-full w-0 bg-primary group-hover:w-full group-hover:transition-all group-hover:duration-[750ms] group-hover:ease-out" />
+            </div>
+            
+            <div className="p-8 pt-10">
+               <h3 className="mb-3 text-2xl font-bold tracking-tight">DSA Marathon Sheet</h3>
+               <p className="text-muted-foreground min-h-[4rem]">
+                 The main public DSA practice sheet. Access comprehensive topic-wise problems, track your progress, and master algorithms.
+               </p>
+               <div className="mt-8 flex items-center text-sm font-semibold text-primary">
+                 Open Sheet <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+               </div>
+            </div>
+          </Link>
+          
+          {/* Card 2: OKC Sheet */}
+          {isClubMember || isAdmin ? (
+             <Link href="/sheet/okc" className="group relative block overflow-hidden rounded-2xl border bg-card text-card-foreground shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl hover:border-primary/50 dark:hover:shadow-primary/25">
+                {/* Top Loading/Progress Bar */}
+                <div className="absolute left-0 top-0 h-1.5 w-full">
+                   <div className="h-full w-0 bg-gradient-to-r from-brand-orange to-brand-pink group-hover:w-full group-hover:transition-all group-hover:duration-[750ms] group-hover:ease-out" />
+                </div>
+                
+                <div className="p-8 pt-10">
+                   <div className="mb-3 flex items-center justify-between">
+                     <h3 className="text-2xl font-bold tracking-tight">OKC DSA Sheet</h3>
+                     <Badge variant="brand" className="shadow-sm">Club Exclusive</Badge>
+                   </div>
+                   <p className="text-muted-foreground min-h-[4rem]">
+                     Exclusive daily sets and specialized problem collections hand-picked for Oyster Kode Club members.
+                   </p>
+                   <div className="mt-8 flex items-center text-sm font-semibold text-primary">
+                     Open OKC Sheet <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+                   </div>
+                </div>
+             </Link>
+          ) : (
+             <div className="relative block overflow-hidden rounded-2xl border bg-card/40 text-card-foreground shadow-sm opacity-90 transition-all">
+                {/* Top Loading/Progress Bar - Locked State */}
+                <div className="absolute left-0 top-0 h-1.5 w-full" />
+                
+                <div className="p-8 pt-10">
+                   <div className="mb-3 flex items-center justify-between">
+                     <h3 className="text-2xl font-bold tracking-tight text-muted-foreground">OKC DSA Sheet</h3>
+                     <Lock className="h-5 w-5 text-muted-foreground" />
+                   </div>
+                   <p className="text-muted-foreground min-h-[4rem]">
+                     Exclusive daily sets and specialized problem collections hand-picked for Oyster Kode Club members.
+                   </p>
+                   <div className="mt-8 flex items-center text-sm font-semibold text-muted-foreground">
+                     Club Members Only
+                   </div>
+                </div>
+             </div>
+          )}
+        </div>
       </div>
     )
   }
