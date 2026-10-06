@@ -1,6 +1,6 @@
-import { collection, getDocs, query, orderBy, doc, getDoc, onSnapshot } from "firebase/firestore"
+import { collection, getDocs, query, orderBy, doc, getDoc, onSnapshot, where, Timestamp } from "firebase/firestore"
 import { db } from "../firebase/firestore"
-import { AppTopic, AppQuestion, PracticeLinkData } from "@/types"
+import { AppTopic, AppQuestion, PracticeLinkData, DailySet } from "@/types"
 
 function mapQuestionData(docId: string, data: any): AppQuestion {
   const links: PracticeLinkData[] = []
@@ -255,6 +255,63 @@ export function subscribeToOkcQuestion(
         onData(null)
       } else {
         onData(mapQuestionData(docSnap.id, docSnap.data()))
+      }
+    },
+    (err) => onError(err)
+  )
+}
+
+export function subscribeToCurrentDailySet(
+  onData: (dailySet: DailySet | null) => void,
+  onError: (error: Error) => void
+): () => void {
+  if (!db) {
+    onError(new Error("Firestore is not initialized"))
+    return () => {}
+  }
+
+  const q = query(
+    collection(db, "dailySets"),
+    where("visible", "==", true)
+  )
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const now = Timestamp.now().toMillis()
+      
+      const sets: DailySet[] = snapshot.docs.map(d => {
+        const data = d.data()
+        return {
+          id: d.id,
+          publishAt: data.publishAt,
+          questionIds: data.questionIds || [],
+          visible: data.visible,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt
+        }
+      })
+
+      // Filter sets that are already published
+      const publishedSets = sets.filter(s => {
+        if (!s.publishAt) return false
+        const timeMs = typeof s.publishAt.toMillis === 'function' 
+          ? s.publishAt.toMillis() 
+          : new Date(s.publishAt).getTime()
+        return timeMs <= now
+      })
+
+      // Sort by publishAt descending
+      publishedSets.sort((a, b) => {
+        const timeA = typeof a.publishAt.toMillis === 'function' ? a.publishAt.toMillis() : new Date(a.publishAt).getTime()
+        const timeB = typeof b.publishAt.toMillis === 'function' ? b.publishAt.toMillis() : new Date(b.publishAt).getTime()
+        return timeB - timeA
+      })
+
+      if (publishedSets.length > 0) {
+        onData(publishedSets[0])
+      } else {
+        onData(null)
       }
     },
     (err) => onError(err)

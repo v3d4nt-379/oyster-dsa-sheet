@@ -9,8 +9,8 @@ import { QuestionTable } from "@/components/dsa/question-table"
 import { ProgressBar } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { AppTopic } from "@/types"
-import { subscribeToOkcSheetData } from "@/lib/firestore/api"
+import { AppTopic, DailySet, AppQuestion } from "@/types"
+import { subscribeToOkcSheetData, subscribeToCurrentDailySet } from "@/lib/firestore/api"
 import { 
   getOkcUserSolvedIds, 
   getOkcUserBookmarkIds, 
@@ -26,6 +26,7 @@ export default function OkcSheetPage() {
   
   const [activeTab, setActiveTab] = React.useState<"normal" | "daily">("normal")
   const [topics, setTopics] = React.useState<AppTopic[]>([])
+  const [currentDailySet, setCurrentDailySet] = React.useState<DailySet | null>(null)
   const [isLoadingData, setIsLoadingData] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
   const [actionError, setActionError] = React.useState<string | null>(null)
@@ -79,7 +80,15 @@ export default function OkcSheetPage() {
         }
       )
       
-      return () => unsubscribe()
+      const unsubscribeDailySet = subscribeToCurrentDailySet(
+        (set) => setCurrentDailySet(set),
+        (err) => console.error("Error loading daily set:", err)
+      )
+      
+      return () => {
+        unsubscribe()
+        unsubscribeDailySet()
+      }
     }
   }, [user, loading, router, loadUserProgress, isAdmin, isClubMember])
 
@@ -301,11 +310,114 @@ export default function OkcSheetPage() {
       </div>
 
       {activeTab === "daily" && (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-16 text-center bg-card/30">
-          <h3 className="text-xl font-bold tracking-tight">Daily Set coming soon</h3>
-          <p className="mt-2 text-muted-foreground max-w-md mx-auto">
-            We are working on bringing you curated daily question sets. Stay tuned!
-          </p>
+        <div className="space-y-4 pt-4">
+          {!currentDailySet ? (
+            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-16 text-center bg-card/30">
+              <h3 className="text-xl font-bold tracking-tight">No Daily Set is available right now.</h3>
+              <p className="mt-2 text-muted-foreground max-w-md mx-auto">
+                Check back later for new curated problem sets!
+              </p>
+            </div>
+          ) : (
+            (() => {
+              // Gather questions while respecting order and visibility
+              const dailyQuestions: AppQuestion[] = []
+              const allQuestionsMap = new Map<string, AppQuestion>()
+              const topicNameMap = new Map<string, string>()
+              
+              topics.forEach(t => {
+                topicNameMap.set(t.id, t.title)
+                t.questions.forEach(q => {
+                  allQuestionsMap.set(q.id, q)
+                })
+              })
+              
+              currentDailySet.questionIds.forEach(id => {
+                const q = allQuestionsMap.get(id)
+                // Skip if missing gracefully, or if disabled (for non-admins)
+                if (q && (isAdmin || q.enabled !== false)) {
+                  dailyQuestions.push(q)
+                }
+              })
+              
+              const totalSolvedCount = dailyQuestions.filter(q => solvedIds.has(q.id)).length
+              const totalQuestionsCount = dailyQuestions.length
+              
+              const publishDate = currentDailySet.publishAt 
+                ? new Date(typeof currentDailySet.publishAt.toMillis === 'function' ? currentDailySet.publishAt.toMillis() : currentDailySet.publishAt)
+                : new Date()
+                
+              const formattedDate = publishDate.toLocaleDateString(undefined, { 
+                weekday: 'long', 
+                month: 'long', 
+                day: 'numeric' 
+              })
+
+              // Group by topic, preserving the order of their first appearance
+              const topicGroups: { topicId: string, topicTitle: string, questions: AppQuestion[] }[] = []
+              
+              dailyQuestions.forEach(q => {
+                let group = topicGroups.find(g => g.topicId === q.topicId)
+                if (!group) {
+                  group = {
+                    topicId: q.topicId,
+                    topicTitle: topicNameMap.get(q.topicId) || "Other",
+                    questions: []
+                  }
+                  topicGroups.push(group)
+                }
+                group.questions.push(q)
+              })
+              
+              const overallPercentage = totalQuestionsCount > 0 ? (totalSolvedCount / totalQuestionsCount) * 100 : 0
+              
+              return (
+                <div className="space-y-6">
+                  {/* Daily Set Header */}
+                  <div className="flex flex-col gap-2 pb-6 border-b">
+                    <div className="flex justify-between items-center text-sm font-medium">
+                      <h2 className="text-xl font-bold tracking-tight">Daily Set: {formattedDate}</h2>
+                      <span>{totalSolvedCount} / {totalQuestionsCount}</span>
+                    </div>
+                    <ProgressBar value={overallPercentage} className="h-2" />
+                  </div>
+                  
+                  {/* Topics */}
+                  {topicGroups.length > 0 ? (
+                    <div className="space-y-4">
+                      {topicGroups.map(group => {
+                        const groupSolvedCount = group.questions.filter(q => solvedIds.has(q.id)).length
+                        const groupTotalCount = group.questions.length
+                        return (
+                          <TopicDrawer 
+                            key={group.topicId}
+                            title={group.topicTitle}
+                            solvedCount={groupSolvedCount}
+                            totalCount={groupTotalCount}
+                            defaultExpanded={true}
+                          >
+                            <QuestionTable 
+                              topicId={group.topicId}
+                              questions={group.questions}
+                              solvedIds={solvedIds}
+                              bookmarkedIds={bookmarkedIds}
+                              onToggleSolved={toggleSolved}
+                              onToggleBookmark={toggleBookmark}
+                              solutionPrefix="/sheet/okc/question"
+                            />
+                          </TopicDrawer>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center text-muted-foreground border border-dashed rounded-lg bg-card/30">
+                      No visible questions found in this set.
+                    </div>
+                  )}
+                </div>
+              )
+            })()
+          )}
         </div>
       )}
 
