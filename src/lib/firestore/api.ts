@@ -168,3 +168,95 @@ export function subscribeToQuestion(
     (err) => onError(err)
   )
 }
+
+export function subscribeToOkcSheetData(
+  onData: (topics: AppTopic[]) => void,
+  onError: (error: Error) => void
+): () => void {
+  if (!db) {
+    onError(new Error("Firestore is not initialized (Missing config)"))
+    return () => {}
+  }
+
+  let topicsData: any[] = []
+  let questionsData: any[] = []
+  let topicsLoaded = false
+  let questionsLoaded = false
+
+  const emit = () => {
+    if (!topicsLoaded || !questionsLoaded) return
+
+    const topicsMap: Record<string, AppTopic> = {}
+    
+    topicsData.forEach(t => {
+      topicsMap[t.id] = {
+        id: t.id,
+        title: t.data.name,
+        description: t.data.description,
+        order: t.data.order,
+        questions: [],
+        enabled: t.data.enabled
+      }
+    })
+
+    questionsData.forEach(q => {
+      const question = mapQuestionData(q.id, q.data)
+      if (topicsMap[question.topicId]) {
+        topicsMap[question.topicId].questions.push(question)
+      } else {
+        console.warn(`OKC Question ${question.id} references missing topic ${question.topicId}`)
+      }
+    })
+
+    onData(Object.values(topicsMap).sort((a, b) => a.order - b.order))
+  }
+
+  const unsubTopics = onSnapshot(
+    query(collection(db, "topics"), orderBy("order", "asc")),
+    (snapshot) => {
+      topicsData = snapshot.docs.map(d => ({ id: d.id, data: d.data() }))
+      topicsLoaded = true
+      emit()
+    },
+    (err) => onError(err)
+  )
+
+  const unsubQuestions = onSnapshot(
+    query(collection(db, "okcQuestions"), orderBy("order", "asc")),
+    (snapshot) => {
+      questionsData = snapshot.docs.map(d => ({ id: d.id, data: d.data() }))
+      questionsLoaded = true
+      emit()
+    },
+    (err) => onError(err)
+  )
+
+  return () => {
+    unsubTopics()
+    unsubQuestions()
+  }
+}
+
+export function subscribeToOkcQuestion(
+  questionId: string,
+  onData: (question: AppQuestion | null) => void,
+  onError: (error: Error) => void
+): () => void {
+  if (!db) {
+    onError(new Error("Firestore is not initialized"))
+    return () => {}
+  }
+
+  const docRef = doc(db, "okcQuestions", questionId)
+  return onSnapshot(
+    docRef,
+    (docSnap) => {
+      if (!docSnap.exists()) {
+        onData(null)
+      } else {
+        onData(mapQuestionData(docSnap.id, docSnap.data()))
+      }
+    },
+    (err) => onError(err)
+  )
+}

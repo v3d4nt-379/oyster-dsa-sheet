@@ -142,10 +142,42 @@ async function seed() {
     console.log(`- Topics created/updated: ${topicsUpdated}`)
     console.log(`- Questions created/updated: ${questionsUpdated}`)
     
+    await seedOkcTestQuestions()
+    
     process.exit(0)
   } catch (err) {
     console.error("❌ Seeding failed: ", err)
     process.exit(1)
+  }
+}
+
+async function seedOkcTestQuestions() {
+  console.log("Starting temporary OKC test data population...")
+  const testIds = ["arrays-q002", "arrays-q003", "arrays-q005"]
+  const batch = db.batch()
+  let copied = 0
+
+  try {
+    for (const id of testIds) {
+      const qSnap = await db.collection("questions").doc(id).get()
+      if (qSnap.exists) {
+        const data = qSnap.data()
+        // Ensure they are enabled for testing
+        data.enabled = true
+        // Allow solution viewing for testing
+        data.solutionEnabled = true
+        // Keep everything else identical (topicId, difficulty, links, solution)
+        
+        const okcRef = db.collection("okcQuestions").doc(id)
+        batch.set(okcRef, data, { merge: true })
+        copied++
+      }
+    }
+
+    await batch.commit()
+    console.log(`✅ OKC test data populated! Copied ${copied} questions to 'okcQuestions'.`)
+  } catch (err) {
+    console.error("❌ OKC test data population failed: ", err)
   }
 }
 

@@ -15,6 +15,7 @@ export interface QuestionTableProps {
   bookmarkedIds: Set<string>
   onToggleSolved: (globalId: string) => void
   onToggleBookmark: (globalId: string) => void
+  solutionPrefix?: string
 }
 
 export function QuestionTable({
@@ -23,7 +24,8 @@ export function QuestionTable({
   solvedIds,
   bookmarkedIds,
   onToggleSolved,
-  onToggleBookmark
+  onToggleBookmark,
+  solutionPrefix = "/sheet/question"
 }: QuestionTableProps) {
   const { isAdmin } = useAuth()
 
@@ -78,7 +80,7 @@ export function QuestionTable({
                       Unavailable
                     </Button>
                   ) : (
-                    <Link href={`/sheet/question/${globalId}/solution`}>
+                    <Link href={`${solutionPrefix}/${globalId}/solution`}>
                       <Button variant="tertiary" size="sm" className="h-8 text-xs font-medium px-3">
                         Solution
                       </Button>
