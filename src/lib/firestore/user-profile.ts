@@ -24,7 +24,8 @@ export async function createUserProfileIfMissing(
   const newProfile: UserProfile = {
     uid,
     createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
+    updatedAt: serverTimestamp(),
+    isClubMember: false
   }
 
   await setDoc(docRef, newProfile)

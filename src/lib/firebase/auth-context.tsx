@@ -14,6 +14,7 @@ interface AuthContextType {
   user: User | null
   loading: boolean
   isAdmin: boolean
+  isClubMember: boolean
   signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
   error: string | null
@@ -23,6 +24,7 @@ const AuthContext = React.createContext<AuthContextType>({
   user: null,
   loading: true,
   isAdmin: false,
+  isClubMember: false,
   signInWithGoogle: async () => {},
   signOut: async () => {},
   error: null
@@ -32,6 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<User | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [isAdmin, setIsAdmin] = React.useState(false)
+  const [isClubMember, setIsClubMember] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
@@ -50,15 +53,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Initialize profile asynchronously (non-blocking)
           import("@/lib/firestore/user-profile").then(({ createUserProfileIfMissing }) => {
             if (currentUser.uid) {
-              createUserProfileIfMissing(currentUser.uid).catch(e => console.error("Profile init error:", e))
+              createUserProfileIfMissing(currentUser.uid)
+                .then(profile => setIsClubMember(!!profile.isClubMember))
+                .catch(e => console.error("Profile init error:", e))
             }
           })
         } catch (err) {
           console.error("Failed to fetch token claims", err)
           setIsAdmin(false)
+          setIsClubMember(false)
         }
       } else {
         setIsAdmin(false)
+        setIsClubMember(false)
       }
       setLoading(false)
     })
@@ -96,7 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, isAdmin, signInWithGoogle, signOut, error }}>
+    <AuthContext.Provider value={{ user, loading, isAdmin, isClubMember, signInWithGoogle, signOut, error }}>
       {children}
     </AuthContext.Provider>
   )

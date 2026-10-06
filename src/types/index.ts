@@ -39,4 +39,14 @@ export interface UserProfile {
   uid: string
   createdAt?: any
   updatedAt?: any
+  isClubMember?: boolean
+}
+
+export interface DailySet {
+  id: string // Firestore document ID (dateOrSetId)
+  publishAt: any // Timestamp
+  questionIds: string[]
+  visible: boolean
+  createdAt: any
+  updatedAt: any
 }

@@ -81,3 +81,67 @@ export async function removeBookmark(uid: string, questionId: string): Promise<v
   const docRef = doc(db, "users", uid, "bookmarks", questionId)
   await deleteDoc(docRef)
 }
+
+// OKC Specific Progress
+
+export async function getOkcUserSolvedIds(uid: string): Promise<Set<string>> {
+  if (!db) throw new Error("Firestore not initialized")
+  
+  const solvedRef = collection(db, "users", uid, "okcSolved")
+  const snapshot = await getDocs(solvedRef)
+  
+  const ids = new Set<string>()
+  snapshot.forEach(doc => {
+    ids.add(doc.id)
+  })
+  
+  return ids
+}
+
+export async function getOkcUserBookmarkIds(uid: string): Promise<Set<string>> {
+  if (!db) throw new Error("Firestore not initialized")
+  
+  const bookmarksRef = collection(db, "users", uid, "okcBookmarks")
+  const snapshot = await getDocs(bookmarksRef)
+  
+  const ids = new Set<string>()
+  snapshot.forEach(doc => {
+    ids.add(doc.id)
+  })
+  
+  return ids
+}
+
+export async function markOkcQuestionSolved(uid: string, questionId: string): Promise<void> {
+  if (!db) throw new Error("Firestore not initialized")
+  
+  const docRef = doc(db, "users", uid, "okcSolved", questionId)
+  await setDoc(docRef, {
+    questionId,
+    solvedAt: serverTimestamp()
+  })
+}
+
+export async function markOkcQuestionUnsolved(uid: string, questionId: string): Promise<void> {
+  if (!db) throw new Error("Firestore not initialized")
+  
+  const docRef = doc(db, "users", uid, "okcSolved", questionId)
+  await deleteDoc(docRef)
+}
+
+export async function addOkcBookmark(uid: string, questionId: string): Promise<void> {
+  if (!db) throw new Error("Firestore not initialized")
+  
+  const docRef = doc(db, "users", uid, "okcBookmarks", questionId)
+  await setDoc(docRef, {
+    questionId,
+    createdAt: serverTimestamp()
+  })
+}
+
+export async function removeOkcBookmark(uid: string, questionId: string): Promise<void> {
+  if (!db) throw new Error("Firestore not initialized")
+  
+  const docRef = doc(db, "users", uid, "okcBookmarks", questionId)
+  await deleteDoc(docRef)
+}

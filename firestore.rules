@@ -22,8 +22,11 @@ service cloud.firestore {
     // User Specific Data (Phase 5 + 8)
     match /users/{userId} {
       allow read, create: if request.auth != null && request.auth.uid == userId;
-      allow delete, update: if false;
+      // Allow admin to update user (e.g. to set isClubMember)
+      allow update: if request.auth != null && request.auth.token.admin == true;
+      allow delete: if false;
 
+      // Marathon Progress
       match /solved/{questionId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
@@ -31,6 +34,35 @@ service cloud.firestore {
       match /bookmarks/{questionId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
+
+      // OKC Progress
+      match /okcSolved/{questionId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isClubMember == true || request.auth.token.admin == true
+        );
+      }
+      
+      match /okcBookmarks/{questionId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isClubMember == true || request.auth.token.admin == true
+        );
+      }
+    }
+
+    // OKC Collection
+    match /okcQuestions/{questionId} {
+      allow read: if request.auth != null && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isClubMember == true || request.auth.token.admin == true
+      );
+      allow create, update, delete: if request.auth != null && request.auth.token.admin == true;
+    }
+
+    // Daily Sets Collection
+    match /dailySets/{setId} {
+      allow read: if request.auth != null && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isClubMember == true || request.auth.token.admin == true
+      );
+      allow create, update, delete: if request.auth != null && request.auth.token.admin == true;
     }
   }
 }
