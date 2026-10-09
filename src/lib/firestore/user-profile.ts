@@ -10,10 +10,13 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   return snap.data() as UserProfile
 }
 
+import { User } from "firebase/auth"
+
 export async function createUserProfileIfMissing(
-  uid: string
+  user: User
 ): Promise<UserProfile> {
   if (!db) throw new Error("Firestore not initialized")
+  const uid = user.uid
   const docRef = doc(db, "users", uid)
   const snap = await getDoc(docRef)
   
@@ -23,6 +26,10 @@ export async function createUserProfileIfMissing(
 
   const newProfile: UserProfile = {
     uid,
+    name: user.displayName || "",
+    email: user.email || "",
+    photoURL: user.photoURL || "",
+    username: user.email?.split("@")[0] || "",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     isClubMember: false

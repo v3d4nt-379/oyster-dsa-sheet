@@ -1,6 +1,6 @@
 import { collection, doc, setDoc, deleteDoc, serverTimestamp, updateDoc, getDocs, onSnapshot, query, orderBy } from "firebase/firestore"
 import { db } from "../firebase/firestore"
-import { AppTopic, AppQuestion, QuestionSolution } from "@/types"
+import { AppTopic, AppQuestion, QuestionSolution, UserProfile } from "@/types"
 
 export async function createTopic(topicId: string, name: string, description: string, order: number, enabled: boolean = true): Promise<void> {
   if (!db) throw new Error("Firestore not initialized")
@@ -243,4 +243,19 @@ export async function deleteDailySet(setId: string): Promise<void> {
   if (!db) throw new Error("Firestore not initialized")
   const docRef = doc(db, "dailySets", setId)
   await deleteDoc(docRef)
+}
+
+export async function getAllUsers(): Promise<UserProfile[]> {
+  if (!db) throw new Error("Firestore not initialized")
+  const snapshot = await getDocs(collection(db, "users"))
+  return snapshot.docs.map(d => d.data() as UserProfile)
+}
+
+export async function updateUserMembership(uid: string, isClubMember: boolean): Promise<void> {
+  if (!db) throw new Error("Firestore not initialized")
+  const docRef = doc(db, "users", uid)
+  await updateDoc(docRef, {
+    isClubMember,
+    updatedAt: serverTimestamp()
+  })
 }

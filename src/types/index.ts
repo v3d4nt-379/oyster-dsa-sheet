@@ -37,6 +37,10 @@ export interface AppTopic {
 
 export interface UserProfile {
   uid: string
+  name?: string
+  username?: string
+  email?: string
+  photoURL?: string
   createdAt?: any
   updatedAt?: any
   isClubMember?: boolean

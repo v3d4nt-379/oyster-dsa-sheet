@@ -21,9 +21,15 @@ service cloud.firestore {
     
     // User Specific Data (Phase 5 + 8)
     match /users/{userId} {
-      allow read, create: if request.auth != null && request.auth.uid == userId;
-      // Allow admin to update user (e.g. to set isClubMember)
-      allow update: if request.auth != null && request.auth.token.admin == true;
+      // Normal user can read their own, Admin can read all
+      allow read: if request.auth != null && (request.auth.uid == userId || request.auth.token.admin == true);
+      allow create: if request.auth != null && request.auth.uid == userId;
+      
+      // Admin can update anything. Normal user can update anything except isClubMember
+      allow update: if request.auth != null && (
+        request.auth.token.admin == true ||
+        (request.auth.uid == userId && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isClubMember'])))
+      );
       allow delete: if false;
 
       // Marathon Progress

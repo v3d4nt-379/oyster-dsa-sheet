@@ -53,7 +53,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Initialize profile asynchronously (non-blocking)
           import("@/lib/firestore/user-profile").then(({ createUserProfileIfMissing }) => {
             if (currentUser.uid) {
-              createUserProfileIfMissing(currentUser.uid)
+              createUserProfileIfMissing(currentUser)
                 .then(profile => setIsClubMember(!!profile.isClubMember))
                 .catch(e => console.error("Profile init error:", e))
             }

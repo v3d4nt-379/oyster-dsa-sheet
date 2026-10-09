@@ -4,6 +4,7 @@ import * as React from "react"
 import { useTheme } from "next-themes"
 import { Moon, Sun, UserCircle, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { UserAvatar } from "@/components/ui/user-avatar"
 import { useAuth } from "@/lib/firebase/auth-context"
 import Link from "next/link"
 
@@ -44,19 +45,18 @@ export function Header() {
 
           {user && (
             <div className="relative">
-              <Button 
-                variant="icon" 
-                size="icon" 
-                aria-label="Profile"
+              <button
+                aria-label="Profile menu"
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="rounded-full overflow-hidden"
+                className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background"
               >
-                {user.photoURL ? (
-                  <img src={user.photoURL} alt="Avatar" className="h-full w-full object-cover" />
-                ) : (
-                  user.displayName ? user.displayName.charAt(0).toUpperCase() : <UserCircle className="h-5 w-5" />
-                )}
-              </Button>
+                <UserAvatar
+                  photoURL={user.photoURL}
+                  name={user.displayName}
+                  email={user.email}
+                  size="sm"
+                />
+              </button>
               
               {isMenuOpen && (
                 <>

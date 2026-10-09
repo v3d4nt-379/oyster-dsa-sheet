@@ -11,6 +11,7 @@ import { UserCircle, Loader2, LogOut, ArrowRight, ArrowLeft } from "lucide-react
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { DifficultyBadge } from "@/components/dsa/difficulty-badge"
+import { UserAvatar } from "@/components/ui/user-avatar"
 
 
 export default function ProfilePage() {
@@ -123,13 +124,13 @@ export default function ProfilePage() {
 
       {/* Profile Header */}
       <section className="flex flex-col md:flex-row items-center md:items-start gap-6 border rounded-xl p-6 bg-card relative">
-        <div className="h-24 w-24 shrink-0 rounded-full overflow-hidden border-4 border-background bg-muted flex items-center justify-center font-bold text-2xl text-muted-foreground">
-          {user.photoURL ? (
-            <img src={user.photoURL} alt={user.displayName || "User"} className="h-full w-full object-cover" />
-          ) : (
-            user.displayName ? user.displayName.charAt(0).toUpperCase() : <UserCircle className="h-12 w-12" />
-          )}
-        </div>
+        <UserAvatar
+          photoURL={user.photoURL}
+          name={user.displayName}
+          email={user.email}
+          size="lg"
+          className="border-4 border-background shadow-sm"
+        />
         
         <div className="flex-1 text-center md:text-left space-y-2 mt-2 md:mt-4">
           <h1 className="text-2xl font-bold">{user.displayName || "Anonymous User"}</h1>
