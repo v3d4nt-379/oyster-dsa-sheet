@@ -1,6 +1,7 @@
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore"
+import { doc, getDoc, setDoc, serverTimestamp, updateDoc } from "firebase/firestore"
 import { db } from "../firebase/firestore"
 import { UserProfile } from "@/types"
+import { User } from "firebase/auth"
 
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   if (!db) throw new Error("Firestore not initialized")
@@ -9,8 +10,6 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   if (!snap.exists()) return null
   return snap.data() as UserProfile
 }
-
-import { User } from "firebase/auth"
 
 export async function createUserProfileIfMissing(
   user: User
@@ -21,7 +20,32 @@ export async function createUserProfileIfMissing(
   const snap = await getDoc(docRef)
   
   if (snap.exists()) {
-    return snap.data() as UserProfile
+    const existingData = snap.data() as UserProfile
+    // Sync identity fields if they have changed (or if missing from older docs)
+    const newName = user.displayName || ""
+    const newEmail = user.email || ""
+    const newPhotoURL = user.photoURL || ""
+    
+    if (
+      existingData.name !== newName ||
+      existingData.email !== newEmail ||
+      existingData.photoURL !== newPhotoURL
+    ) {
+      await updateDoc(docRef, {
+        name: newName,
+        email: newEmail,
+        photoURL: newPhotoURL,
+        updatedAt: serverTimestamp()
+      })
+      
+      return {
+        ...existingData,
+        name: newName,
+        email: newEmail,
+        photoURL: newPhotoURL
+      }
+    }
+    return existingData
   }
 
   const newProfile: UserProfile = {
