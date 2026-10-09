@@ -284,7 +284,9 @@ export function subscribeToCurrentDailySet(
         const data = d.data()
         return {
           id: d.id,
+          name: data.name || "Daily Set",
           publishAt: data.publishAt,
+          expiresAt: data.expiresAt,
           questionIds: data.questionIds || [],
           visible: data.visible,
           createdAt: data.createdAt,
@@ -292,24 +294,23 @@ export function subscribeToCurrentDailySet(
         }
       })
 
-      // Filter sets that are already published
-      const publishedSets = sets.filter(s => {
-        if (!s.publishAt) return false
-        const timeMs = typeof s.publishAt.toMillis === 'function' 
-          ? s.publishAt.toMillis() 
-          : new Date(s.publishAt).getTime()
-        return timeMs <= now
+      // Filter sets that are currently active
+      const activeSets = sets.filter(s => {
+        if (!s.publishAt || !s.expiresAt) return false
+        const pubMs = typeof s.publishAt.toMillis === 'function' ? s.publishAt.toMillis() : new Date(s.publishAt).getTime()
+        const expMs = typeof s.expiresAt.toMillis === 'function' ? s.expiresAt.toMillis() : new Date(s.expiresAt).getTime()
+        return pubMs <= now && now < expMs
       })
 
       // Sort by publishAt descending
-      publishedSets.sort((a, b) => {
+      activeSets.sort((a, b) => {
         const timeA = typeof a.publishAt.toMillis === 'function' ? a.publishAt.toMillis() : new Date(a.publishAt).getTime()
         const timeB = typeof b.publishAt.toMillis === 'function' ? b.publishAt.toMillis() : new Date(b.publishAt).getTime()
         return timeB - timeA
       })
 
-      if (publishedSets.length > 0) {
-        onData(publishedSets[0])
+      if (activeSets.length > 0) {
+        onData(activeSets[0])
       } else {
         onData(null)
       }

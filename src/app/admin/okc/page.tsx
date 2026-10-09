@@ -265,10 +265,11 @@ export default function OkcAdminPage() {
     if (confirm("Are you sure you want to delete this question?")) {
       try {
         const dailySets = await getAllDailySets()
-        const isReferenced = dailySets.some(set => set.questionIds.includes(globalId))
+        const referencingSets = dailySets.filter(set => set.questionIds && set.questionIds.includes(globalId))
         
-        if (isReferenced) {
-          setError("This question is used in one or more Daily Sets and cannot be deleted until those references are removed.")
+        if (referencingSets.length > 0) {
+          const names = referencingSets.map(s => s.name || s.id).join(", ")
+          setError(`Cannot delete this question. It is referenced by Daily Set(s): ${names}. Remove the question from the Daily Set first.`)
           return
         }
 

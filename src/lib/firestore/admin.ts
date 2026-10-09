@@ -1,4 +1,4 @@
-import { collection, doc, setDoc, deleteDoc, serverTimestamp, updateDoc, getDocs } from "firebase/firestore"
+import { collection, doc, setDoc, deleteDoc, serverTimestamp, updateDoc, getDocs, onSnapshot, query, orderBy } from "firebase/firestore"
 import { db } from "../firebase/firestore"
 import { AppTopic, AppQuestion, QuestionSolution } from "@/types"
 
@@ -176,4 +176,71 @@ export async function getAllDailySets(): Promise<any[]> {
   if (!db) throw new Error("Firestore not initialized")
   const snapshot = await getDocs(collection(db, "dailySets"))
   return snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
+}
+
+export function subscribeToAllDailySets(
+  onData: (dailySets: any[]) => void,
+  onError: (error: Error) => void
+): () => void {
+  if (!db) {
+    onError(new Error("Firestore not initialized"))
+    return () => {}
+  }
+
+  const q = query(collection(db, "dailySets"), orderBy("publishAt", "desc"))
+  
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const sets = snapshot.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      }))
+      onData(sets)
+    },
+    (err) => onError(err)
+  )
+}
+
+export async function createDailySet(
+  setId: string, 
+  data: {
+    name: string,
+    publishAt: any,
+    expiresAt: any,
+    questionIds: string[],
+    visible: boolean
+  }
+): Promise<void> {
+  if (!db) throw new Error("Firestore not initialized")
+  const docRef = doc(db, "dailySets", setId)
+  await setDoc(docRef, {
+    ...data,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  })
+}
+
+export async function updateDailySet(
+  setId: string, 
+  updates: Partial<{
+    name: string,
+    publishAt: any,
+    expiresAt: any,
+    questionIds: string[],
+    visible: boolean
+  }>
+): Promise<void> {
+  if (!db) throw new Error("Firestore not initialized")
+  const docRef = doc(db, "dailySets", setId)
+  await updateDoc(docRef, {
+    ...updates,
+    updatedAt: serverTimestamp()
+  })
+}
+
+export async function deleteDailySet(setId: string): Promise<void> {
+  if (!db) throw new Error("Firestore not initialized")
+  const docRef = doc(db, "dailySets", setId)
+  await deleteDoc(docRef)
 }

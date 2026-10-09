@@ -44,7 +44,9 @@ export interface UserProfile {
 
 export interface DailySet {
   id: string // Firestore document ID (dateOrSetId)
+  name: string
   publishAt: any // Timestamp
+  expiresAt: any // Timestamp
   questionIds: string[]
   visible: boolean
   createdAt: any

@@ -32,8 +32,13 @@ async function seedDailySet() {
     await db.collection("okcQuestions").doc("hashing-q001").set(data, { merge: true })
   }
 
+  const expiresAtDate = new Date(publishAtDate)
+  expiresAtDate.setHours(expiresAtDate.getHours() + 24)
+
   const data = {
+    name: "Test Daily Set",
     publishAt: Timestamp.fromDate(publishAtDate),
+    expiresAt: Timestamp.fromDate(expiresAtDate),
     questionIds: [
       "arrays-q002",
       "hashing-q001",

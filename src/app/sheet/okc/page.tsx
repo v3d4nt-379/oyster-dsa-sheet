@@ -334,8 +334,8 @@ export default function OkcSheetPage() {
               
               currentDailySet.questionIds.forEach(id => {
                 const q = allQuestionsMap.get(id)
-                // Skip if missing gracefully, or if disabled (for non-admins)
-                if (q && (isAdmin || q.enabled !== false)) {
+                // The Daily Set's questionIds array is authoritative for visibility
+                if (q) {
                   dailyQuestions.push(q)
                 }
               })
